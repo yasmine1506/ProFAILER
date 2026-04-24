@@ -433,9 +433,10 @@ function p2ActiveTx(){return S.p2activeTx;}
 /* ═══════════════════════════════════════════
    ACTIONS
 ═══════════════════════════════════════════ */
-function beginGame(){S.phase=1;renderAll();}
+function beginGame(){S.phase=1;syncAndRender();}
 
 function switchView(v){
+  if(LOCKED_VIEW) return; // locked views ignore tab switching
   document.querySelectorAll('.view-panel').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.tab-btn').forEach(b=>b.className='tab-btn');
   document.getElementById('view-'+v).classList.add('active');
@@ -847,7 +848,7 @@ function sharedScreenHTML(){
      TX2 → P1 is lattice controller
 ═══════════════════════════════════════════ */
 function renderP1(){
-
+  if(LOCKED_VIEW && LOCKED_VIEW !== 'p1') return;
 
   let h='';
 
@@ -1017,7 +1018,7 @@ function renderP1(){
      TX2 → P2 is codex holder + sequence word display + input translation
 ═══════════════════════════════════════════ */
 function renderP2(){
-
+  if(LOCKED_VIEW && LOCKED_VIEW !== 'p2') return;
 
   let h='';
 
@@ -1258,7 +1259,7 @@ function applyRemoteState(remote) {
 let ws = null;
 let wsConnected = false;
 
-function connectWS() {
+function connectWS(forceReset = false) {
   // Derive WebSocket URL from current page URL
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   const wsUrl = `${proto}//${location.host}`;
@@ -1269,6 +1270,12 @@ function connectWS() {
     wsConnected = true;
     updateConnectionBadge(true);
     console.log('WebSocket connected');
+    if (forceReset) {
+      S = freshState();
+      renderAll();
+      syncState();
+      console.log('Fresh state broadcasted');
+    }
   };
 
   ws.onmessage = (event) => {
@@ -1283,7 +1290,7 @@ function connectWS() {
     wsConnected = false;
     updateConnectionBadge(false);
     console.log('WebSocket disconnected — reconnecting in 2s');
-    setTimeout(connectWS, 2000);
+    setTimeout(() => connectWS(false), 2000); // reconnect without reset
   };
 
   ws.onerror = (err) => {
@@ -1543,7 +1550,9 @@ initView();
 renderAll();
 
 if (location.protocol !== 'file:') {
-  connectWS();
+  // If ?reset is in the URL, broadcast a fresh state once connected
+  const forceReset = location.search.includes('reset');
+  connectWS(forceReset);
 } else {
   updateConnectionBadge(true);
   document.getElementById('conn-label').textContent = 'LOCAL MODE';

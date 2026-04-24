@@ -96,6 +96,11 @@ wss.on('connection', ws => {
 
   ws.on('close', () => {
     console.log(`Client disconnected (total: ${wss.clients.size})`);
+    // Clear saved state when everyone leaves so the next session starts fresh
+    if (wss.clients.size === 0) {
+      latestState = null;
+      console.log('All clients disconnected — state cleared for next session');
+    }
   });
 
   ws.on('error', err => console.error('WebSocket error:', err.message));
