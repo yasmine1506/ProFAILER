@@ -6,13 +6,30 @@ A collaborative 2-player digital escape room puzzle for teaching LLM hallucinati
 
 ## Files
 
+The server accepts **either** of these layouts — use whichever matches how you pushed to GitHub:
+
+**Option A — flat (simplest):**
 ```
-/
-  server.js          — Node.js WebSocket + HTTP server
-  package.json       — dependencies (only: ws)
-  /public
-    index.html       — the full game (standalone or networked)
+server.js
+package.json
+index.html          ← rename xenolinguist-dilemma-networked.html to this
+README.md
+.gitignore
 ```
+
+**Option B — with public/ folder:**
+```
+server.js
+package.json
+README.md
+.gitignore
+public/
+  index.html        ← rename xenolinguist-dilemma-networked.html to this
+```
+
+The server checks for `public/index.html` first, then falls back to `index.html` next to `server.js`. Either works on Railway.
+
+**The file named `xenolinguist-dilemma-networked.html` must be renamed to `index.html`** — the server always looks for `index.html`.
 
 ---
 

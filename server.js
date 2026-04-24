@@ -4,14 +4,30 @@ const path = require('path');
 const { WebSocketServer } = require('ws');
 
 const PORT = process.env.PORT || 3000;
-const PUBLIC = path.join(__dirname, 'public');
+
+// Find the HTML file — works whether index.html is in public/ or alongside server.js
+const PUBLIC_DIR = fs.existsSync(path.join(__dirname, 'public'))
+  ? path.join(__dirname, 'public')
+  : __dirname;
+
+const INDEX = path.join(PUBLIC_DIR, 'index.html');
+
+// Verify index.html exists at startup so the error is obvious
+if (!fs.existsSync(INDEX)) {
+  console.error(`ERROR: Cannot find index.html`);
+  console.error(`Looked in: ${INDEX}`);
+  console.error(`Make sure index.html is either:`);
+  console.error(`  - In a "public" folder next to server.js, OR`);
+  console.error(`  - In the same folder as server.js`);
+  process.exit(1);
+}
+console.log(`Serving HTML from: ${INDEX}`);
 
 // ── HTTP server — serves index.html and any static assets ──────────────────
 const httpServer = http.createServer((req, res) => {
-  // Normalise URL: strip query string, default to index.html
-  let filePath = path.join(PUBLIC, req.url.split('?')[0]);
-  if (filePath === PUBLIC || filePath === path.join(PUBLIC, '/')) {
-    filePath = path.join(PUBLIC, 'index.html');
+  let filePath = path.join(PUBLIC_DIR, req.url.split('?')[0]);
+  if (filePath === PUBLIC_DIR || req.url === '/' || req.url.startsWith('/#')) {
+    filePath = INDEX;
   }
 
   const ext = path.extname(filePath);
@@ -30,17 +46,12 @@ const httpServer = http.createServer((req, res) => {
 
   fs.readFile(filePath, (err, data) => {
     if (err) {
-      if (err.code === 'ENOENT') {
-        // Fall back to index.html for any unknown path (single-page app)
-        fs.readFile(path.join(PUBLIC, 'index.html'), (e2, d2) => {
-          if (e2) { res.writeHead(500); res.end('Server error'); return; }
-          res.writeHead(200, { 'Content-Type': 'text/html' });
-          res.end(d2);
-        });
-      } else {
-        res.writeHead(500);
-        res.end('Server error');
-      }
+      // Any unknown path → serve index.html (hash routing handled client-side)
+      fs.readFile(INDEX, (e2, d2) => {
+        if (e2) { res.writeHead(500); res.end('Cannot read index.html'); return; }
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(d2);
+      });
       return;
     }
     res.writeHead(200, { 'Content-Type': contentType });
