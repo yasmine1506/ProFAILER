@@ -1440,64 +1440,100 @@ function resetGame() {
 
 /* ═══════════════════════════════════════════
    HASH-BASED VIEW LOCKING
-   #p1    → lock to Player 1, hide tabs
-   #p2    → lock to Player 2, hide tabs
-   #shared → lock to Shared screen, hide tabs
-   (no hash) → normal tab UI for local testing
+   Sets a global LOCKED_VIEW so render functions
+   only paint their own screen.
+   #p1     → only renderP1 runs, tab bar hidden
+   #p2     → only renderP2 runs, tab bar hidden
+   #shared → dedicated shared-only view, tab bar hidden
+   (no hash) → normal local testing mode
 ═══════════════════════════════════════════ */
+let LOCKED_VIEW = null; // 'p1' | 'p2' | 'shared' | null
+
 function initView() {
   const hash = window.location.hash.replace('#', '').toLowerCase();
-  const validViews = ['p1', 'p2', 'shared'];
+  if (!['p1', 'p2', 'shared'].includes(hash)) return; // local testing, no lock
 
-  if (validViews.includes(hash)) {
-    // Hide tab bar — this screen is locked
-    document.querySelector('.view-tabs').style.display = 'none';
+  LOCKED_VIEW = hash;
+  document.querySelector('.view-tabs').style.display = 'none';
 
-    if (hash === 'shared') {
-      // Show a dedicated shared screen panel
-      // Add a third panel for shared view and activate it
-      const sharedPanel = document.createElement('div');
-      sharedPanel.id = 'view-shared';
-      sharedPanel.className = 'view-panel active phase-intro';
-      sharedPanel.innerHTML = '<div class="col-shared" id="shared-col-shared"></div><div class="col-private" id="shared-col-private"></div>';
-      document.querySelector('.app').appendChild(sharedPanel);
+  if (hash === 'p1') {
+    // Only show p1 panel
+    document.getElementById('view-p1').classList.add('active');
+    document.getElementById('view-p2').classList.remove('active');
 
-      // Deactivate p1
-      document.getElementById('view-p1').classList.remove('active');
+  } else if (hash === 'p2') {
+    // Only show p2 panel
+    document.getElementById('view-p2').classList.add('active');
+    document.getElementById('view-p1').classList.remove('active');
 
-      // Override renderAll for shared view
-      const origRenderAll2 = renderAll;
-      window._sharedRenderAll = function() {
-        // Render shared content into both columns
-        const shared = sharedScreenHTML();
-        const sc = document.getElementById('shared-col-shared');
-        const sp = document.getElementById('shared-col-private');
-        if (sc) sc.innerHTML = `<div class="col-hdr col-hdr-shared"><span class="badge b-s">Shared Terminal</span><span class="phdr-t">XENOX-7 Transmission Terminal</span></div>${shared}`;
-        if (sp) sp.innerHTML = '';
-        // Toggle phase-intro
-        const panel = document.getElementById('view-shared');
-        if (panel) panel.classList.toggle('phase-intro', S.phase === 0);
-      };
-      const baseRender = renderAll;
-      window.renderAll = function() { baseRender(); window._sharedRenderAll(); };
-    } else {
-      // Lock to p1 or p2 — activate that panel, deactivate the other
-      const active = hash; // 'p1' or 'p2'
-      const other = hash === 'p1' ? 'p2' : 'p1';
-      document.getElementById(`view-${other}`).classList.remove('active');
-      document.getElementById(`view-${active}`).classList.add('active');
-    }
+  } else if (hash === 'shared') {
+    // Build a dedicated shared panel that spans full width
+    document.getElementById('view-p1').classList.remove('active');
+    document.getElementById('view-p2').classList.remove('active');
+
+    const panel = document.createElement('div');
+    panel.id = 'view-shared';
+    panel.className = 'view-panel active';
+    // Single column: shared terminal fills the whole panel
+    panel.style.gridTemplateColumns = '1fr';
+    panel.innerHTML = `
+      <div class="col-shared" id="shared-main" style="border-right:none;max-width:900px;margin:0 auto;width:100%;"></div>
+      <div id="shared-private-empty" style="display:none;"></div>
+    `;
+    document.querySelector('.app').appendChild(panel);
+  }
+}
+
+// Guard: only render the locked view (or both for local testing)
+function renderAll() {
+  if (LOCKED_VIEW === 'p1') { renderP1(); return; }
+  if (LOCKED_VIEW === 'p2') { renderP2(); return; }
+  if (LOCKED_VIEW === 'shared') { renderSharedOnly(); return; }
+  renderP1(); renderP2(); // local testing — render both
+}
+
+function renderSharedOnly() {
+  const el = document.getElementById('shared-main');
+  if (!el) return;
+  if (S.phase === 0) {
+    document.getElementById('view-shared').classList.add('phase-intro');
+    el.innerHTML = `
+      <div class="col-hdr col-hdr-shared" style="max-width:900px;">
+        <span class="badge b-s">Shared Terminal</span>
+        <span class="phdr-t">XENOX-7 Transmission Terminal</span>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:center;height:80vh;background:#0c0e1a;">
+        <div class="intro-card" style="max-width:560px;width:90%;">
+          <div class="intro-header">Dr. J. Searle — Personal Workstation</div>
+          <div class="intro-title">Welcome, Dr. Searle.</div>
+          <div class="intro-divider"></div>
+          <div style="background:#0a1828;border:1px solid #1e3050;border-radius:6px;padding:12px 16px;margin-bottom:18px;">
+            <div style="font-family:var(--mono);font-size:9px;color:#4a7090;letter-spacing:.14em;text-transform:uppercase;margin-bottom:8px;display:flex;justify-content:space-between;">
+              <span>New Message</span><span style="color:#5bf5a8">● Unread</span>
+            </div>
+            <div style="font-family:var(--mono);font-size:11px;color:#8090a8;margin-bottom:4px;">FROM: <span style="color:#c0d8f0">XENOX-7</span></div>
+            <div style="font-family:var(--mono);font-size:11px;color:#8090a8;margin-bottom:12px;">SUBJ: <span style="color:#c0d8f0">Transmission received. Awaiting response.</span></div>
+            <div style="font-family:var(--mono);font-size:19px;color:#c0d8f0;letter-spacing:8px;border-top:1px solid #1e3050;padding-top:12px;">▲ → ▼ → ◆ → ● → ■</div>
+            <div style="font-family:var(--mono);font-size:19px;color:#c0d8f0;letter-spacing:8px;margin-top:7px;">▶ → ◀ → ★ → ♦ → ♠</div>
+          </div>
+          <button class="intro-begin" onclick="beginGame()">Access XENOX-7 Communication Terminal →</button>
+        </div>
+      </div>`;
+  } else {
+    document.getElementById('view-shared').classList.remove('phase-intro');
+    const shared = sharedScreenHTML();
+    el.innerHTML = `
+      <div class="col-hdr col-hdr-shared">
+        <span class="badge b-s">Shared Terminal</span>
+        <span class="phdr-t">XENOX-7 Transmission Terminal</span>
+      </div>
+      ${shared}`;
   }
 }
 
 /* ═══════════════════════════════════════════
    INIT
 ═══════════════════════════════════════════ */
-
-// Update the sig dot to also serve as connection indicator
-document.querySelector('.sig-dot').id = 'conn-dot';
-document.querySelector('.sig div:last-child') && (document.querySelector('.sig').lastChild.id = 'conn-label');
-// More robust label targeting
 const sigEl = document.querySelector('.sig');
 if (sigEl) {
   sigEl.innerHTML = '<div class="sig-dot" id="conn-dot"></div><span id="conn-label">CONNECTING...</span>';
@@ -1506,13 +1542,13 @@ if (sigEl) {
 initView();
 renderAll();
 
-// Only connect WebSocket when served from a real server (not file://)
 if (location.protocol !== 'file:') {
   connectWS();
 } else {
-  updateConnectionBadge(true); // Standalone local mode — no sync needed
+  updateConnectionBadge(true);
   document.getElementById('conn-label').textContent = 'LOCAL MODE';
 }
+
 
 </script>
 </body>
