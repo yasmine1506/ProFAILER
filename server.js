@@ -39,6 +39,17 @@ const httpServer = http.createServer((req, res) => {
     return;
   }
 
+  // Puzzle 3 — served at /puzzle3 or /puzzle3.html
+  const PUZZLE3 = path.join(PUBLIC_DIR, 'puzzle3.html');
+  if (urlPath === '/puzzle3' || urlPath === '/puzzle3.html' || urlPath.startsWith('/puzzle3#')) {
+    fs.readFile(PUZZLE3, (err, data) => {
+      if (err) { res.writeHead(404); res.end('puzzle3.html not found — make sure it is in the same folder as server.js'); return; }
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(data);
+    });
+    return;
+  }
+
   let filePath = path.join(PUBLIC_DIR, urlPath);
   if (filePath === PUBLIC_DIR || req.url === '/' || req.url.startsWith('/#')) {
     filePath = INDEX;

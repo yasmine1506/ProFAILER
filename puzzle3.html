@@ -1,0 +1,1000 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PARTS Puzzle</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --font:'IBM Plex Sans',system-ui,sans-serif;
+  --mono:'IBM Plex Mono',monospace;
+  --radius-sm:6px; --radius-md:10px; --radius-lg:14px;
+  --shadow-sm:0 1px 3px rgba(0,0,0,.08);
+  --shadow-md:0 4px 12px rgba(0,0,0,.12);
+
+  /* PARTS colours */
+  --purple-bg:#EEEDFE;--purple-border:#AFA9EC;--purple-accent:#534AB7;--purple-text:#3C3489;
+  --green-bg:#EAF3DE;--green-border:#97C459;--green-accent:#4A8C1C;--green-text:#27500A;
+  --pink-bg:#FBEAF0;--pink-border:#ED93B1;--pink-accent:#C0395A;--pink-text:#72243E;
+  --orange-bg:#FAEEDA;--orange-border:#EF9F27;--orange-accent:#C07A10;--orange-text:#633806;
+  --blue-bg:#E6F1FB;--blue-border:#85B7EB;--blue-accent:#2B6CB0;--blue-text:#0C447C;
+
+  /* Neutrals */
+  --bg:#F7F7F8;--surface:#FFFFFF;--border:#E5E7EB;
+  --text-primary:#111827;--text-secondary:#6B7280;--text-muted:#9CA3AF;
+
+  /* Shared design tokens (matches puzzles 1 & 2) */
+  --ok:#147a50;--oklt:#d6f0e4;--okbd:#7acba8;
+  --err:#b81c1c;--errlt:#fde8e8;--errbd:#e8a0a0;
+  --p1:#1a5fa8;--p1lt:#deeaf8;--p1bd:#8ab8e0;
+  --p2:#6622aa;--p2lt:#ede0f8;--p2bd:#bb99e0;
+}
+
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text-primary);font-family:var(--font);font-size:15px;line-height:1.5;}
+.app{display:flex;flex-direction:column;height:100vh;overflow:hidden;}
+
+/* ── Header ── */
+.app-header{background:#18182e;padding:6px 14px;display:flex;align-items:center;gap:10px;flex-shrink:0;}
+.logo{font-family:var(--mono);font-size:13px;font-weight:600;color:#e0f0ff;}
+.logo span{color:#607090;font-size:10px;font-weight:400;margin-left:6px;}
+.sig{margin-left:auto;display:flex;align-items:center;gap:5px;font-size:10px;color:#607090;font-family:var(--mono);}
+.sig-dot{width:6px;height:6px;border-radius:50%;background:#5bf5a8;animation:pulse 2s ease-in-out infinite;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* ── Tabs ── */
+.view-tabs{display:flex;background:#fff;border-bottom:2px solid var(--border);flex-shrink:0;}
+.tab-btn{flex:1;padding:8px 10px;background:transparent;border:none;border-bottom:3px solid transparent;margin-bottom:-2px;
+  color:var(--text-muted);font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;}
+.tab-btn:hover{color:var(--text-secondary);background:var(--bg);}
+.tab-btn.tab-1{color:var(--p1);border-bottom-color:var(--p1);background:#fff;}
+.tab-btn.tab-2{color:var(--p2);border-bottom-color:var(--p2);background:#fff;}
+
+/* ── Player panels — full width, no split ── */
+.view-panel{display:none;flex:1;overflow-y:auto;height:calc(100vh - 62px);padding:1rem;}
+.view-panel::-webkit-scrollbar{width:4px;}
+.view-panel::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
+.view-panel.active{display:block;}
+
+/* ── Log feedback banner ── */
+.log-banner{background:var(--oklt);border-bottom:2px solid var(--okbd);padding:8px 14px;
+  display:flex;align-items:center;gap:8px;font-weight:600;color:var(--ok);font-size:13px;
+  position:sticky;top:0;z-index:9;margin:-1rem -1rem 1rem -1rem;}
+
+/* ── Toggle bar (local testing only) ── */
+.toggle-bar{display:flex;gap:.4rem;background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--radius-lg);padding:.35rem;width:fit-content;margin-bottom:1rem;
+  box-shadow:var(--shadow-sm);}
+.tog-btn{padding:.4rem 1.2rem;border-radius:var(--radius-md);font-size:13px;font-weight:500;
+  cursor:pointer;border:none;background:transparent;color:var(--text-secondary);transition:background .15s,color .15s;}
+.tog-btn.active{background:var(--bg);color:var(--text-primary);border:1px solid var(--border);box-shadow:var(--shadow-sm);}
+
+/* ── Hint box ── */
+.hint-box{display:flex;align-items:flex-start;gap:.75rem;background:var(--surface);
+  border:1px solid var(--border);border-radius:var(--radius-md);padding:.85rem 1rem;
+  box-shadow:var(--shadow-sm);}
+.hint-avatar{width:2rem;height:2rem;border-radius:50%;background:var(--bg);
+  border:1px solid var(--border);display:flex;align-items:center;justify-content:center;
+  font-size:11px;font-weight:700;color:var(--text-secondary);flex-shrink:0;}
+.hint-text{font-size:14px;color:var(--text-secondary);line-height:1.55;}
+
+/* ── PARTS tiles ── */
+.parts-display{display:flex;align-items:center;gap:.5rem;background:var(--surface);
+  border:1px solid var(--border);border-radius:var(--radius-md);padding:.75rem 1rem;
+  box-shadow:var(--shadow-sm);}
+.parts-label{font-size:11px;font-weight:600;color:var(--text-muted);letter-spacing:.06em;
+  text-transform:uppercase;margin-right:.25rem;}
+.parts-tiles{display:flex;gap:.4rem;flex-wrap:wrap;}
+.parts-tile{width:2.4rem;height:2.4rem;border-radius:var(--radius-sm);
+  display:flex;align-items:center;justify-content:center;font-weight:700;font-size:1rem;
+  border:1.5px solid transparent;position:relative;cursor:default;user-select:none;}
+.parts-tile.tip-enabled{cursor:pointer;}
+.tile-tooltip{display:none;position:absolute;top:calc(100% + 6px);left:50%;transform:translateX(-50%);
+  background:#1f2937;color:#fff;border-radius:var(--radius-sm);padding:.5rem .75rem;
+  font-size:12px;width:180px;z-index:20;line-height:1.4;box-shadow:var(--shadow-md);}
+.tile-tooltip::before{content:'';position:absolute;bottom:100%;left:50%;transform:translateX(-50%);
+  border:5px solid transparent;border-bottom-color:#1f2937;}
+.tt-name{font-weight:600;margin-bottom:.2rem;}
+.parts-tile.tip-enabled:focus .tile-tooltip,
+.parts-tile.tip-enabled:hover .tile-tooltip{display:block;}
+
+/* ── Option buttons ── */
+.panel{border-radius:var(--radius-lg);padding:.85rem 1rem;display:flex;flex-direction:column;gap:.5rem;
+  border:1px solid transparent;}
+.panel-purple{background:var(--purple-bg);border-color:var(--purple-border);}
+.panel-green {background:var(--green-bg); border-color:var(--green-border);}
+.panel-pink  {background:var(--pink-bg);  border-color:var(--pink-border);}
+.panel-orange{background:var(--orange-bg);border-color:var(--orange-border);}
+.panel-blue  {background:var(--blue-bg);  border-color:var(--blue-border);grid-column:1/-1;}
+.panel-label{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+  text-align:center;min-height:14px;opacity:0;transition:opacity .4s;}
+.panel-label.visible{opacity:1;}
+.panel-purple .panel-label{color:var(--purple-accent);}
+.panel-green  .panel-label{color:var(--green-accent);}
+.panel-pink   .panel-label{color:var(--pink-accent);}
+.panel-orange .panel-label{color:var(--orange-accent);}
+.panel-blue   .panel-label{color:var(--blue-accent);}
+.panel-locked-note{font-size:10px;text-align:center;color:var(--text-muted);margin-top:-.1rem;}
+
+.opts{display:grid;grid-template-columns:1fr 1fr;gap:.4rem;}
+.opts.four-col{grid-template-columns:repeat(4,1fr);}
+.opt{display:flex;flex-direction:column;align-items:center;gap:.2rem;
+  background:var(--surface);border:1.5px solid var(--border);border-radius:var(--radius-md);
+  padding:.5rem .4rem;font-size:12px;font-weight:500;cursor:pointer;transition:all .15s;
+  color:var(--text-primary);text-align:center;}
+.opt:hover:not(:disabled){border-color:var(--text-secondary);}
+.opt.active{border-color:var(--purple-accent);background:#f0effd;color:var(--purple-accent);}
+.opt.p2-sel{border-color:var(--blue-accent);background:var(--blue-bg);color:var(--blue-text);}
+.opt.correct{border-color:var(--ok);background:var(--oklt);color:var(--ok);cursor:default;pointer-events:none;}
+.opt.wrong{border-color:var(--err);background:var(--errlt);color:var(--err);}
+.opt:disabled{opacity:.45;cursor:not-allowed;}
+.opt-label{font-size:11px;}
+
+/* ── Costume display ── */
+.costume-display{display:flex;align-items:center;justify-content:center;gap:1.5rem;
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);
+  padding:1rem;box-shadow:var(--shadow-sm);}
+.costume-slot{display:flex;flex-direction:column;align-items:center;gap:.35rem;}
+.costume-emoji{font-size:2.5rem;min-height:3rem;display:flex;align-items:center;}
+.costume-label{font-size:10px;text-transform:uppercase;letter-spacing:.08em;font-weight:600;color:var(--text-muted);}
+.costume-blank{font-size:13px;font-weight:600;color:var(--text-secondary);
+  background:var(--bg);border:1px dashed var(--border);border-radius:var(--radius-sm);
+  padding:.2rem .6rem;min-width:80px;text-align:center;transition:all .3s;}
+.blank.filled-persona {background:var(--purple-bg);border-color:var(--purple-border);color:var(--purple-text);}
+.blank.filled-recipient{background:var(--pink-bg);  border-color:var(--pink-border);  color:var(--pink-text);}
+.blank.filled-tone    {background:var(--orange-bg); border-color:var(--orange-border);color:var(--orange-text);}
+
+/* ── Panels grid ── */
+.panels-grid{display:grid;grid-template-columns:1fr 1fr;gap:.75rem;}
+
+/* ── Generate/Submit buttons ── */
+.gen-btn,.submit-btn{width:100%;padding:.75rem;border-radius:var(--radius-md);
+  font-size:14px;font-weight:600;cursor:pointer;border:none;transition:all .2s;}
+.gen-btn{background:#1f2937;color:#fff;}
+.gen-btn:hover:not(:disabled){background:#374151;}
+.gen-btn:disabled{opacity:.45;cursor:not-allowed;}
+.submit-btn{background:var(--blue-accent);color:#fff;}
+.submit-btn:hover:not(:disabled){background:#1d4ed8;}
+.submit-btn:disabled{opacity:.45;cursor:not-allowed;}
+.submit-row{display:flex;align-items:center;gap:.75rem;}
+.attempts-counter{font-size:13px;color:var(--text-secondary);flex-shrink:0;}
+
+/* ── Response cards (P2 sees P1's generated stories) ── */
+.response-stack{display:flex;flex-direction:column;gap:.6rem;}
+.response-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);
+  padding:.85rem 1rem;box-shadow:var(--shadow-sm);}
+.response-meta{font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:.4rem;letter-spacing:.03em;}
+.response-text{font-size:14px;color:var(--text-primary);line-height:1.6;}
+.followup-note{margin-top:.6rem;padding:.5rem .75rem;background:#fffbeb;border-left:3px solid #f59e0b;
+  border-radius:0 var(--radius-sm) var(--radius-sm) 0;font-size:13px;color:#92400e;}
+
+/* ── Attempt history chips (P2 puzzle phase 2) ── */
+.attempt-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);
+  padding:.75rem 1rem;box-shadow:var(--shadow-sm);}
+.attempt-meta{font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:.4rem;}
+.attempt-chips{display:flex;flex-wrap:wrap;gap:.3rem;}
+.chip{font-size:11px;font-weight:600;padding:.2rem .5rem;border-radius:4px;}
+.chip-ok{background:var(--oklt);color:var(--ok);border:1px solid var(--okbd);}
+.chip-bad{background:var(--errlt);color:var(--err);border:1px solid var(--errbd);}
+
+/* ── Phase transition banner ── */
+.phase-banner{background:#18182e;border-radius:var(--radius-md);padding:1rem 1.25rem;
+  color:#c0d8f0;font-family:var(--mono);font-size:13px;line-height:1.7;margin-bottom:1rem;}
+.phase-banner-title{color:#5bf5a8;font-weight:600;font-size:14px;margin-bottom:.4rem;letter-spacing:.04em;}
+
+/* ── Lock display ── */
+.lock-display{display:flex;align-items:center;gap:.6rem;background:var(--surface);
+  border:1px solid var(--border);border-radius:var(--radius-md);padding:.6rem 1rem;
+  box-shadow:var(--shadow-sm);font-size:13px;}
+.lock-emoji{font-size:1.4rem;transition:all .4s;}
+.lock-label{font-weight:600;color:var(--text-secondary);}
+.lock-label.green{color:var(--ok);}
+
+/* ── Modal ── */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;
+  display:flex;align-items:center;justify-content:center;padding:1rem;}
+.modal-overlay.hidden{display:none;}
+.modal-box{background:#fff;border-radius:var(--radius-lg);padding:1.5rem;max-width:460px;
+  width:100%;box-shadow:0 8px 40px rgba(0,0,0,.25);}
+.modal-title{font-size:18px;font-weight:700;margin-bottom:.75rem;}
+.modal-title.success{color:var(--ok);}
+.modal-body{font-size:14px;color:var(--text-secondary);line-height:1.7;white-space:pre-line;margin-bottom:1.25rem;}
+.modal-close-btn{width:100%;padding:.6rem;border-radius:var(--radius-md);border:1px solid var(--border);
+  background:var(--bg);font-size:13px;font-weight:600;cursor:pointer;color:var(--text-primary);}
+.modal-close-btn:hover{background:var(--border);}
+
+/* ── Section spacing ── */
+.section{display:flex;flex-direction:column;gap:.75rem;margin-bottom:1rem;}
+.section-label{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--text-muted);display:flex;align-items:center;gap:8px;}
+.section-label::after{content:'';flex:1;height:1px;background:var(--border);}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="app-header">
+    <div class="logo">PARTS Puzzle <span>DEER Prototype — Puzzle 3</span></div>
+    <div class="sig"><div class="sig-dot" id="conn-dot"></div><span id="conn-label">CONNECTING...</span></div>
+  </div>
+  <div class="view-tabs" id="view-tabs">
+    <button class="tab-btn tab-1" id="tab-p1" onclick="switchView('p1')">Player 1</button>
+    <button class="tab-btn" id="tab-p2" onclick="switchView('p2')">Player 2</button>
+  </div>
+  <div class="view-panel active" id="view-p1"><div id="p1-content"></div></div>
+  <div class="view-panel" id="view-p2"><div id="p2-content"></div></div>
+</div>
+<div id="modal-root"></div>
+
+<script>
+// ══════════════════════════════════════════════════════════
+// STORY DATABASE
+// ══════════════════════════════════════════════════════════
+const STORIES = {
+  "Drill Sergeant": {
+    "Kid": {
+      "Friendly Tone": "The zebra marched proudly across the field, showing off her bold stripes. She gave a sharp little hop just to make you smile. She was ready for a big day of fun.",
+      "Angry Tone":    "The zebra stomped through the grass like it had disobeyed orders. Her stripes bristled with frustration. She snorted hard and charged ahead to fix the situation.",
+      "Sad Tone":      "The zebra slowed her steps, her hooves barely tapping the ground. She lowered her head like she'd lost a teammate. Still, she kept moving because that's what strong zebras do.",
+      "Serious Tone":  "The zebra advanced with perfect discipline, every step measured. She scanned the field for anything out of line. Her mission was clear, and she would complete it without fail."
+    },
+    "Musician": {
+      "Friendly Tone": "The zebra's hooves hit the dirt in a crisp, upbeat rhythm. She strutted like she was leading a parade. Every step was a confident beat meant to pump you up.",
+      "Angry Tone":    "The zebra hammered the ground with furious tempo. Her stripes shook like a drumline under pressure. She marched on, demanding the world keep up.",
+      "Sad Tone":      "The zebra tapped out a slow, dragging rhythm as she walked. Her steps sounded like a song missing its melody. She kept the beat going, even if it felt heavy.",
+      "Serious Tone":  "The zebra moved with strict, unwavering cadence. Every hoofbeat landed exactly where it belonged. She treated the savanna like a stage that required absolute precision."
+    },
+    "Chef": {
+      "Friendly Tone": "The zebra inspected the grass like she was choosing the best ingredients. She chomped with cheerful approval. Every bite was a victory.",
+      "Angry Tone":    "The zebra snapped up the grass like it had offended her. She chewed with fierce determination. Nothing on her plate dared misbehave again.",
+      "Sad Tone":      "The zebra nibbled slowly, barely tasting the greens. Her ears drooped as she ate. Even her favorite snacks couldn't lift her spirits today.",
+      "Serious Tone":  "The zebra evaluated each patch of grass with tactical focus. She selected only what met her standards. Her meal was a mission, and she executed it flawlessly."
+    }
+  },
+  "Surfer Dude": {
+    "Kid": {
+      "Friendly Tone": "The zebra cruised across the meadow like she was riding the chillest wave ever. Her stripes shimmered in the sunshine. She was totally stoked to explore.",
+      "Angry Tone":    "The zebra stomped through the grass like the vibes were all messed up. Her tail flicked in frustration. She just needed a moment to cool the waves down.",
+      "Sad Tone":      "The zebra wandered slowly, her stripes looking a little dim. She sighed like the breeze wasn't hitting right today. She hoped tomorrow's vibes would feel better.",
+      "Serious Tone":  "The zebra walked with calm, steady focus, like she was balancing on a long, quiet wave. Her eyes stayed fixed ahead. She was riding the moment with full intention."
+    },
+    "Musician": {
+      "Friendly Tone": "The zebra's hooves tapped out a mellow groove as she wandered. The whole savanna felt like a chill jam session. Even the wind caught the rhythm.",
+      "Angry Tone":    "The zebra stomped out a sharp, chaotic beat. Her tail flicked like a broken metronome. She needed the music to settle before she could vibe again.",
+      "Sad Tone":      "The zebra's steps made a soft, droopy rhythm. Her stripes swayed like a slow, lonely melody. She wished the tune felt brighter.",
+      "Serious Tone":  "The zebra moved with a steady, meditative beat. Each step was its own note in a long, flowing song. She was deep in the groove of the savanna."
+    },
+    "Chef": {
+      "Friendly Tone": "The zebra nibbled the grass like she was tasting a fresh new dish. She chewed with pure enjoyment. Every bite was a little flavor adventure.",
+      "Angry Tone":    "The zebra ripped up the grass like a bad meal she had to get through. Her tail whipped in irritation. The savanna needed better ingredients.",
+      "Sad Tone":      "The zebra grazed slowly, like she'd lost the recipe for a favorite dish. The grass tasted fine, but something was missing. She kept eating, hoping the flavor would return.",
+      "Serious Tone":  "The zebra sampled each tuft of grass with focused intention. She evaluated flavor, texture, and freshness. Her approach to every meal was quiet, deliberate, and precise."
+    }
+  },
+  "Shakespearean Playwright": {
+    "Kid": {
+      "Friendly Tone": "Hark! The zebra doth prance across yonder meadow with gleeful stride. Her stripes, bold as a hero's banner, shimmer in the golden light. What joy to witness such a noble creature frolic so!",
+      "Angry Tone":    "Out, out, thou wretched grass! The zebra stomped with righteous fury upon the offending field. Her stripes, fierce as battle flags, warned all creatures: begone from her path!",
+      "Sad Tone":      "Alas, poor zebra! She wandered through the weeping meadow, her heart heavy as a winter storm. Even the flowers bowed their heads in sympathy for her gentle sorrow.",
+      "Serious Tone":  "With measured tread and solemn eye, the zebra surveyed her kingdom. She moved as one who bears the weight of destiny upon her striped and noble back."
+    },
+    "Musician": {
+      "Friendly Tone": "O what a melody her hooves doth strike upon the earthen stage! The zebra pranced with rhythmic grace, composing symphonies with every joyful step across the verdant field.",
+      "Angry Tone":    "Thou discordant field! The zebra hammered furious percussion into the ground. Her stripes blazed like a crescendo. She demanded the world resolve its dissonance at once!",
+      "Sad Tone":      "Like a lament played upon a mournful lute, the zebra walked in slow and somber time. Each hoofbeat fell like a tear upon the silent stage of the empty savanna.",
+      "Serious Tone":  "With the gravity of a conductor before the grand performance, the zebra moved with perfect, measured tempo. She treated every step as a note in an eternal and important composition."
+    },
+    "Chef": {
+      "Friendly Tone": "What feast doth nature provide! The zebra sampled the meadow's bounty with theatrical delight. Each blade of grass was savored like a delicacy worthy of the grandest banquet.",
+      "Angry Tone":    "Fie upon this tasteless turf! The zebra chewed with dramatic outrage. She declared the savanna's offerings an insult to refined palates everywhere. Better ingredients were demanded at once.",
+      "Sad Tone":      "With a heavy heart and heavier jaw, the zebra grazed without pleasure. Even the sweetest grasses tasted of grief. She ate because she must, not because the world deserved her appetite.",
+      "Serious Tone":  "With the gravity of a master chef inspecting mise en place, the zebra evaluated every morsel. Nothing escaped her critical eye. The meadow was her kitchen, and she its uncompromising sovereign."
+    }
+  },
+  "Teacher": {
+    "Kid": {
+      "Friendly Tone": "The zebra trotted over to explain something very important: stripes are actually quite fascinating! She smiled encouragingly and waited patiently for questions. Learning together is always the best adventure.",
+      "Angry Tone":    "The zebra stopped and turned sharply. This behavior was simply unacceptable and she needed everyone to listen carefully. She pointed to the offending patch of grass with stern, educational authority.",
+      "Sad Tone":      "The zebra paused to reflect on today's lesson: sometimes things don't go as planned, and that's okay. She spoke softly, her voice carrying the quiet weight of an important life lesson.",
+      "Serious Tone":  "The zebra addressed the meadow with clear objectives and measurable outcomes. She presented her findings methodically. At the end, she summarized the three key takeaways for full comprehension."
+    },
+    "Musician": {
+      "Friendly Tone": "The zebra demonstrated the natural rhythm found in every ecosystem. She encouraged students to listen carefully to the beat of hooves on earth. Music, she explained, is everywhere if you pay attention.",
+      "Angry Tone":    "The zebra interrupted the lesson with firm correction. That rhythm was completely wrong, and she needed everyone to start again from the beginning. Precision matters in music and in life.",
+      "Sad Tone":      "The zebra reflected on how even the most beautiful melodies contain moments of sadness. She walked slowly, demonstrating dynamics. Sometimes the quietest notes carry the most important meaning.",
+      "Serious Tone":  "The zebra outlined the mathematical relationship between her stride and musical tempo. She cross-referenced three academic sources and assigned follow-up reading on savanna acoustics for next week."
+    },
+    "Chef": {
+      "Friendly Tone": "The zebra enthusiastically explained the nutritional properties of each grass variety. She encouraged tasting with curiosity and an open mind. Every meal, she said, is an opportunity to learn something delicious.",
+      "Angry Tone":    "The zebra corrected the preparation technique immediately and without ambiguity. That is not how you select quality greens, and she would not move on until the proper method was demonstrated correctly.",
+      "Sad Tone":      "The zebra quietly noted that today's grazing lesson had not gone as hoped. She spoke gently about the importance of patience and trying again. Even great chefs have difficult days in the kitchen.",
+      "Serious Tone":  "The zebra outlined a structured approach to evaluating grass quality: texture, color, moisture content, and nutritional density. She graded each sample objectively and recorded findings in her field notebook."
+    }
+  }
+};
+
+// ══════════════════════════════════════════════════════════
+// WIN CONDITIONS & HINTS
+// ══════════════════════════════════════════════════════════
+const OW = { persona:"Shakespearean Playwright", recipient:"Musician", tones:["Angry Tone","Sad Tone"] };
+const AW = { persona:"Surfer Dude", recipient:"Chef", tone:"Serious Tone" };
+
+const HINTS_O = [
+  "Hmm I want something that WOWS my teacher. Hmmm I did see her read Romeo and Juliet the other day…",
+  "This doesn't feel creative enough. I need to make this more personalized to me. My favorite hobby is playing music…",
+  "Something's not quite right… the assignment is missing that emotional aspect to it."
+];
+const HINTS_A = [
+  "You know, my teacher always says to go with the flow and keep it chill… kind of like someone who rides waves for a living.",
+  "And she loves it when stories have a real-world angle — like something you'd find in a kitchen or at a dinner table.",
+  "She also mentioned the best stories have a certain gravity to them… nothing too playful, nothing too emotional. Just focused and composed."
+];
+
+const P2_CORRECT = {
+  persona:"Surfer Dude", aim:"elevator pitch",
+  recipient:"Chef", tone:"Friendly", structure:"Bullet points"
+};
+
+// ══════════════════════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════════════════════
+const LOCAL_KEYS = new Set(['showModal','modalData','lastGenerated']);
+
+function freshState() {
+  return {
+    phase: 1,  // 1 = phase 1 active, 2 = phase 2 active
+    p1: { persona:null, recipient:null, tone:null },
+    g: {
+      count:0, winShown:false, earlyGuessed:false,
+      hint1:false, hint2:false, hint3:false,
+      pOk:false, rOk:false, tOk:false
+    },
+    p1History: [],  // [{meta, story, hint}] — synced to P2
+    p2sel: { persona:null, aim:null, recipient:null, tone:null, structure:null },
+    p2left: 3,
+    p2done: false,
+    p2Attempts: [],  // [{snapshot, results}] — for rendering attempt history
+    // local-only
+    showModal: false,
+    modalData: null,
+    lastGenerated: null,
+  };
+}
+
+let S = freshState();
+
+function syncableState() {
+  const out = {};
+  for (const k of Object.keys(S)) {
+    if (!LOCAL_KEYS.has(k)) out[k] = S[k];
+  }
+  return out;
+}
+
+function applyRemoteState(remote) {
+  for (const k of Object.keys(remote)) {
+    if (!LOCAL_KEYS.has(k)) S[k] = remote[k];
+  }
+  renderAll();
+}
+
+// ══════════════════════════════════════════════════════════
+// GAME LOGIC (pure — no DOM touches)
+// ══════════════════════════════════════════════════════════
+function winPersona()   { return S.g.earlyGuessed ? AW.persona    : OW.persona; }
+function winRecipient() { return S.g.earlyGuessed ? AW.recipient  : OW.recipient; }
+function winTones()     { return S.g.earlyGuessed ? [AW.tone]     : OW.tones; }
+
+function isOriginalWin() {
+  return S.p1.persona === OW.persona && S.p1.recipient === OW.recipient && OW.tones.includes(S.p1.tone);
+}
+function isAltWin() {
+  return S.p1.persona === AW.persona && S.p1.recipient === AW.recipient && S.p1.tone === AW.tone;
+}
+
+function tryChecks() {
+  if (!S.g.pOk && S.g.hint1 && S.p1.persona === winPersona())       S.g.pOk = true;
+  if (!S.g.rOk && S.g.hint2 && S.p1.recipient === winRecipient())   S.g.rOk = true;
+  if (!S.g.tOk && S.g.hint3 && winTones().includes(S.p1.tone))      S.g.tOk = true;
+}
+
+// ══════════════════════════════════════════════════════════
+// ACTIONS
+// ══════════════════════════════════════════════════════════
+function setP1Option(group, val) {
+  S.p1[group] = val;
+  tryChecks();
+  syncAndRender();
+}
+
+function generateStory() {
+  if (!S.p1.persona || !S.p1.recipient || !S.p1.tone || S.g.winShown) return;
+  S.g.count++;
+
+  const story = STORIES[S.p1.persona]?.[S.p1.recipient]?.[S.p1.tone] || 'Story not found.';
+  const hints = S.g.earlyGuessed ? HINTS_A : HINTS_O;
+  let hint = null;
+
+  if (!S.g.earlyGuessed && S.g.count <= 3 && isOriginalWin()) S.g.earlyGuessed = true;
+
+  if (S.g.count === 4) { hint = hints[0]; S.g.hint1 = true; }
+  else if (S.g.count === 5) { hint = hints[1]; S.g.hint2 = true; }
+  else if (S.g.count === 6) { hint = hints[2]; S.g.hint3 = true; }
+
+  tryChecks();
+
+  const toneDisplay = S.p1.tone.replace(' Tone','');
+  const meta = `Attempt ${S.g.count} — ${S.p1.persona} · ${S.p1.recipient} · ${toneDisplay}`;
+  S.p1History.unshift({ meta, story, hint });  // prepend — newest first
+
+  const win = (!S.g.earlyGuessed && isOriginalWin() && S.g.count > 3) ||
+              (S.g.earlyGuessed && isAltWin() && S.g.count > 3);
+
+  if (win) {
+    S.g.winShown = true;
+    S.lastGenerated = 'win';
+  } else {
+    S.lastGenerated = 'generated';
+  }
+
+  syncAndRender();
+
+  // Show modal locally after render
+  if (win) {
+    showModal('🎉 Perfect match!', 'A response has been generated to your teammate.\nMoving to Phase 2!', true, goToPhase2);
+  } else {
+    showModal('✓ Success', 'A response has been generated to your teammate.', false, null);
+  }
+}
+
+function goToPhase2() {
+  S.phase = 2;
+  syncAndRender();
+}
+
+function setP2Option(cat, val) {
+  if (S.p2done) return;
+  S.p2sel[cat] = val;
+  syncAndRender();
+}
+
+function submitP2() {
+  if (S.p2done) return;
+  const cats = ['persona','aim','recipient','tone','structure'];
+  if (cats.some(c => !S.p2sel[c])) {
+    showModal('Incomplete', 'Please select one option in each category before submitting.', false, null);
+    return;
+  }
+
+  S.p2left--;
+  const attemptNum = 3 - S.p2left;
+  const results = {
+    persona:   S.p2sel.persona   === P2_CORRECT.persona,
+    aim:       S.p2sel.aim?.toLowerCase()       === P2_CORRECT.aim.toLowerCase(),
+    recipient: S.p2sel.recipient === P2_CORRECT.recipient,
+    tone:      S.p2sel.tone      === P2_CORRECT.tone,
+    structure: S.p2sel.structure?.toLowerCase() === P2_CORRECT.structure.toLowerCase(),
+  };
+  const allOk = Object.values(results).every(Boolean);
+
+  S.p2Attempts.unshift({ snapshot: {...S.p2sel}, results, attemptNum });
+
+  // Lock correct categories
+  cats.forEach(cat => { if (!results[cat]) S.p2sel[cat] = null; });
+
+  if (allOk) {
+    S.p2done = true;
+    syncAndRender();
+    showModal('🎉 Correct!', 'You identified all PARTS settings perfectly!', true, null);
+  } else if (S.p2left === 0) {
+    S.p2done = true;
+    syncAndRender();
+    showModal('Out of attempts', 'The correct answers have been revealed.', false, null);
+  } else {
+    syncAndRender();
+    showModal('Not quite', 'Some answers are wrong — keep trying for those!', false, null);
+  }
+}
+
+function resetGame() {
+  S = freshState();
+  renderModal();
+  syncAndRender();
+}
+
+// ══════════════════════════════════════════════════════════
+// MODAL (local-only — not synced)
+// ══════════════════════════════════════════════════════════
+let _modalCb = null;
+
+function showModal(title, body, success, cb) {
+  S.showModal = true;
+  S.modalData = { title, body, success };
+  _modalCb = cb || null;
+  renderModal();
+}
+
+function closeModal() {
+  S.showModal = false;
+  S.modalData = null;
+  const cb = _modalCb; _modalCb = null;
+  renderModal();
+  if (cb) cb();
+}
+
+function renderModal() {
+  const root = document.getElementById('modal-root');
+  if (!S.showModal || !S.modalData) { root.innerHTML = ''; return; }
+  const { title, body, success } = S.modalData;
+  root.innerHTML = `
+    <div class="modal-overlay" onclick="if(event.target===this)closeModal()">
+      <div class="modal-box">
+        <div class="modal-title${success?' success':''}">${title}</div>
+        <div class="modal-body">${body}</div>
+        <button class="modal-close-btn" onclick="closeModal()">Close</button>
+      </div>
+    </div>`;
+}
+
+// ══════════════════════════════════════════════════════════
+// RENDER — PLAYER 1
+// ══════════════════════════════════════════════════════════
+function renderP1() {
+  if (LOCKED_VIEW && LOCKED_VIEW !== 'p1') return;
+  const el = document.getElementById('p1-content');
+  let h = '';
+
+  if (S.phase === 1) {
+    h += `<div class="section">
+      <div class="section-label">Your Assignment</div>
+      <div class="hint-box">
+        <div class="hint-avatar">P1</div>
+        <div class="hint-text">You are an AI writing assistant. Your student has given you a writing task but hasn't told you all the settings yet. Use the PARTS framework to generate a story — your teammate will read each output and try to work out your settings.</div>
+      </div>
+    </div>`;
+
+    // Costume display
+    const pEmoji = p1CostumeEmoji(S.p1.persona);
+    const rEmoji = p1RecipientEmoji(S.p1.recipient);
+    h += `<div class="section">
+      <div class="section-label">Your Character</div>
+      <div class="costume-display">
+        <div class="costume-slot">
+          <div class="costume-emoji">${pEmoji||'❓'}</div>
+          <div class="costume-label">Persona</div>
+          <div class="costume-blank blank${S.p1.persona?' filled-persona':''}">${S.p1.persona||'—'}</div>
+        </div>
+        <div class="costume-slot">
+          <div class="costume-emoji">${rEmoji||'❓'}</div>
+          <div class="costume-label">Recipient</div>
+          <div class="costume-blank blank${S.p1.recipient?' filled-recipient':''}">${S.p1.recipient||'—'}</div>
+        </div>
+        <div class="costume-slot">
+          <div class="costume-emoji">${S.p1.tone?toneEmoji(S.p1.tone):'❓'}</div>
+          <div class="costume-label">Tone</div>
+          <div class="costume-blank blank${S.p1.tone?' filled-tone':''}">${S.p1.tone?S.p1.tone.replace(' Tone',''):'—'}</div>
+        </div>
+      </div>
+    </div>`;
+
+    // PARTS tiles
+    h += `<div class="section">
+      <div class="section-label">PARTS Framework</div>
+      <div class="parts-display">
+        <span class="parts-label">PARTS</span>
+        <div class="parts-tiles">
+          ${partsTile('P','Persona','The writing style or character voice the AI uses.',S.g.pOk)}
+          ${partsTile('A','Aim','The goal or purpose of the writing.',false,true)}
+          ${partsTile('R','Recipient','Who the output is written for.',S.g.rOk)}
+          ${partsTile('T','Tone','The emotional quality of the writing.',S.g.tOk)}
+          ${partsTile('S','Structure','How the output is formatted.',false,true)}
+        </div>
+      </div>
+    </div>`;
+
+    // Option panels
+    h += `<div class="section">
+      <div class="section-label">Select PARTS Settings</div>
+      <div class="panels-grid">
+        <div class="panel panel-purple">
+          <div class="panel-label visible">Persona</div>
+          ${optsHTML('persona',[
+            {v:'Drill Sergeant',e:'🪖',label:'Drill Sergeant'},
+            {v:'Shakespearean Playwright',e:'🎭',label:'Playwright'},
+            {v:'Surfer Dude',e:'🏄',label:'Surfer Dude'},
+            {v:'Teacher',e:'📚',label:'Teacher'},
+          ],S.p1.persona,'p1-persona')}
+        </div>
+        <div class="panel panel-pink">
+          <div class="panel-label visible">Recipient</div>
+          ${optsHTML('recipient',[
+            {v:'Kid',e:'🧒',label:'Kid'},
+            {v:'Musician',e:'🎸',label:'Musician'},
+            {v:'Chef',e:'👨‍🍳',label:'Chef'},
+          ],S.p1.recipient,'p1-recipient')}
+        </div>
+        <div class="panel panel-orange" style="grid-column:1/-1">
+          <div class="panel-label visible">Tone</div>
+          ${optsHTML('tone',[
+            {v:'Friendly Tone',e:'😊',label:'Friendly'},
+            {v:'Angry Tone',e:'😠',label:'Angry'},
+            {v:'Sad Tone',e:'😢',label:'Sad'},
+            {v:'Serious Tone',e:'😐',label:'Serious'},
+          ],S.p1.tone,'p1-tone',true)}
+        </div>
+      </div>
+    </div>`;
+
+    const canGen = S.p1.persona && S.p1.recipient && S.p1.tone && !S.g.winShown;
+    h += `<div class="section">
+      <button class="gen-btn" onclick="generateStory()" ${canGen?'':'disabled'}>
+        ✨ Generate Story
+      </button>
+    </div>`;
+
+    // P1's previous generations (shown to P1 too, in reverse)
+    if (S.p1History.length > 0) {
+      h += `<div class="section">
+        <div class="section-label">Your Generated Stories</div>
+        <div class="response-stack">
+          ${S.p1History.map(c => responseCardHTML(c)).join('')}
+        </div>
+      </div>`;
+    }
+
+  } else {
+    // Phase 2 — P1 sees P2's guessing panel
+    h += `<div class="phase-banner">
+      <div class="phase-banner-title">✓ Phase 2 Unlocked</div>
+      Your teammate has received the generated stories. Now they need to reverse-engineer your PARTS settings. Watch their progress below.
+    </div>`;
+
+    h += p2GuessingPanelHTML();
+  }
+
+  el.innerHTML = h;
+}
+
+// ══════════════════════════════════════════════════════════
+// RENDER — PLAYER 2
+// ══════════════════════════════════════════════════════════
+function renderP2() {
+  if (LOCKED_VIEW && LOCKED_VIEW !== 'p2') return;
+  const el = document.getElementById('p2-content');
+  let h = '';
+
+  if (S.phase === 1) {
+    h += `<div class="section">
+      <div class="section-label">Waiting for stories</div>
+      <div class="hint-box">
+        <div class="hint-avatar">P2</div>
+        <div class="hint-text">Your teammate is generating AI stories using secret PARTS settings. Each story they generate will appear here. Read carefully — you'll need to figure out their settings in Phase 2!</div>
+      </div>
+    </div>`;
+
+    // Lock display
+    h += `<div class="section">
+      <div class="lock-display">
+        <span class="lock-emoji">${S.phase === 1 ? '🔒' : '🔓'}</span>
+        <span class="lock-label${S.phase === 2 ? ' green' : ''}">
+          ${S.phase === 1 ? 'PARTS settings locked until Phase 2' : 'UNLOCKED'}
+        </span>
+      </div>
+    </div>`;
+
+    if (S.p1History.length > 0) {
+      h += `<div class="section">
+        <div class="section-label">Stories from your teammate</div>
+        <div class="response-stack">
+          ${S.p1History.map(c => responseCardHTML(c)).join('')}
+        </div>
+      </div>`;
+    } else {
+      h += `<div class="section">
+        <div style="color:var(--text-muted);font-size:14px;font-style:italic;">No stories yet — your teammate is still choosing settings.</div>
+      </div>`;
+    }
+
+  } else {
+    // Phase 2 — P2 guesses
+    h += `<div class="phase-banner">
+      <div class="phase-banner-title">Phase 2 — Reverse Engineer the PARTS</div>
+      You've seen all the stories. Now figure out the exact PARTS settings your teammate used!
+    </div>`;
+
+    // Show P1's stories for reference
+    if (S.p1History.length > 0) {
+      h += `<div class="section">
+        <div class="section-label">Stories to analyse</div>
+        <div class="response-stack">
+          ${S.p1History.map(c => responseCardHTML(c)).join('')}
+        </div>
+      </div>`;
+    }
+
+    h += p2GuessingPanelHTML();
+  }
+
+  el.innerHTML = h;
+}
+
+// ══════════════════════════════════════════════════════════
+// SHARED RENDER HELPERS
+// ══════════════════════════════════════════════════════════
+function partsTile(letter, name, desc, unlocked, alwaysLocked) {
+  const enabled = unlocked && !alwaysLocked;
+  return `<div class="parts-tile${enabled?' tip-enabled':''}" role="listitem" tabindex="${enabled?'0':'-1'}"
+    style="background:var(--${colorForLetter(letter)}-bg);color:var(--${colorForLetter(letter)}-text);border-color:var(--${colorForLetter(letter)}-border)">
+    ${letter}
+    <div class="tile-tooltip">
+      <div class="tt-name">${name}</div>
+      <div>${desc}</div>
+    </div>
+  </div>`;
+}
+
+function colorForLetter(l) {
+  return {P:'purple',A:'green',R:'pink',T:'orange',S:'blue'}[l]||'blue';
+}
+
+function optsHTML(group, items, selected, idPrefix, fourCol) {
+  return `<div class="opts${fourCol?' four-col':''}" role="group">
+    ${items.map(({v,e,label}) => {
+      const active = selected === v;
+      return `<button class="opt${active?' active':''}" onclick="setP1Option('${group}','${v}')" aria-pressed="${active}">
+        <span>${e}</span><span class="opt-label">${label}</span>
+      </button>`;
+    }).join('')}
+  </div>`;
+}
+
+function responseCardHTML(c) {
+  return `<div class="response-card">
+    <div class="response-meta">${c.meta}</div>
+    <div class="response-text">${c.story}</div>
+    ${c.hint ? `<div class="followup-note">💬 ${c.hint}</div>` : ''}
+  </div>`;
+}
+
+function p2GuessingPanelHTML() {
+  const cats = ['persona','aim','recipient','tone','structure'];
+
+  // Which categories are locked correct from previous attempts
+  const lockedCorrect = {};
+  if (S.p2Attempts.length > 0) {
+    cats.forEach(cat => {
+      lockedCorrect[cat] = S.p2Attempts.some(a => a.results[cat]);
+    });
+  }
+
+  let h = `<div class="section">
+    <div class="section-label">Guess the PARTS settings</div>
+    <div class="panels-grid">
+      <div class="panel panel-purple">
+        <div class="panel-label visible">Persona</div>
+        ${p2OptsHTML('persona',[
+          {v:'Drill Sergeant',label:'Drill Sergeant'},
+          {v:'Shakespearean Playwright',label:'Playwright'},
+          {v:'Surfer Dude',label:'Surfer Dude'},
+          {v:'Teacher',label:'Teacher'},
+        ],lockedCorrect.persona)}
+      </div>
+      <div class="panel panel-green">
+        <div class="panel-label visible">Aim</div>
+        ${p2OptsHTML('aim',[
+          {v:'story about zebras',label:'Story about zebras'},
+          {v:'science report',label:'Science report'},
+          {v:'elevator pitch',label:'Elevator pitch'},
+          {v:'game script',label:'Game script'},
+        ],lockedCorrect.aim)}
+      </div>
+      <div class="panel panel-pink">
+        <div class="panel-label visible">Recipient</div>
+        ${p2OptsHTML('recipient',[
+          {v:'Kid',label:'Kid'},
+          {v:'Musician',label:'Musician'},
+          {v:'Chef',label:'Chef'},
+        ],lockedCorrect.recipient)}
+      </div>
+      <div class="panel panel-orange">
+        <div class="panel-label visible">Tone</div>
+        ${p2OptsHTML('tone',[
+          {v:'Friendly',label:'Friendly'},
+          {v:'Angry',label:'Angry'},
+          {v:'Sad',label:'Sad'},
+          {v:'Serious',label:'Serious'},
+        ],lockedCorrect.tone)}
+      </div>
+      <div class="panel panel-blue">
+        <div class="panel-label visible">Structure</div>
+        ${p2OptsHTML('structure',[
+          {v:'Poem',label:'Poem'},
+          {v:'3-sentences-max',label:'3-sentences-max'},
+          {v:'Full essay',label:'Full essay'},
+          {v:'Bullet points',label:'Bullet points'},
+        ],lockedCorrect.structure,true)}
+      </div>
+    </div>
+  </div>`;
+
+  if (!S.p2done) {
+    const allSelected = cats.every(c => S.p2sel[c] || lockedCorrect[c]);
+    h += `<div class="section">
+      <div class="submit-row">
+        <button class="submit-btn" onclick="submitP2()" ${allSelected?'':'disabled'}>Submit</button>
+        <span class="attempts-counter">${S.p2left} attempt${S.p2left===1?'':'s'} remaining</span>
+      </div>
+    </div>`;
+  } else {
+    h += `<div class="section">
+      <div class="submit-row">
+        <button class="submit-btn" disabled>Submit</button>
+        <span class="attempts-counter">${S.p2done && S.p2Attempts[0]?.results && Object.values(S.p2Attempts[0].results).every(Boolean) ? '✅ Solved!' : 'No attempts remaining'}</span>
+      </div>
+    </div>`;
+  }
+
+  if (S.p2Attempts.length > 0) {
+    h += `<div class="section">
+      <div class="section-label">Previous attempts</div>
+      <div class="response-stack">
+        ${S.p2Attempts.map(a => {
+          const labels = {persona:'P',aim:'A',recipient:'R',tone:'T',structure:'S'};
+          const chips = Object.entries(a.snapshot).map(([k,v]) =>
+            `<span class="chip chip-${a.results[k]?'ok':'bad'}">${labels[k]}: ${v}</span>`
+          ).join('');
+          return `<div class="attempt-card">
+            <div class="attempt-meta">Attempt ${a.attemptNum}</div>
+            <div class="attempt-chips">${chips}</div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+  }
+
+  return h;
+}
+
+function p2OptsHTML(cat, items, lockedCorrect, fourCol) {
+  return `<div class="opts${fourCol?' four-col':''}" role="group">
+    ${items.map(({v,label}) => {
+      // Is this the locked-correct value?
+      const isCorrect = lockedCorrect && S.p2Attempts.some(a =>
+        a.results[cat] && a.snapshot[cat]?.toLowerCase() === v.toLowerCase()
+      );
+      const isSelected = !isCorrect && S.p2sel[cat]?.toLowerCase() === v.toLowerCase();
+      const isWrong = !isCorrect && S.p2Attempts.some(a =>
+        !a.results[cat] && a.snapshot[cat]?.toLowerCase() === v.toLowerCase()
+        && S.p2Attempts.indexOf(a) === 0  // only last attempt
+      );
+      const locked = S.p2done || lockedCorrect;
+      return `<button class="opt${isCorrect?' correct':isSelected?' p2-sel':isWrong?' wrong':''}"
+        onclick="${locked||isCorrect?'':` setP2Option('${cat}','${v}')`}"
+        ${locked||isCorrect?'style="pointer-events:none"':''}>
+        <span class="opt-label">${label}</span>
+      </button>`;
+    }).join('')}
+  </div>`;
+}
+
+// Emoji helpers
+function p1CostumeEmoji(persona) {
+  return {
+    'Drill Sergeant':'🪖','Shakespearean Playwright':'🎭','Surfer Dude':'🏄','Teacher':'📚'
+  }[persona]||'';
+}
+function p1RecipientEmoji(r) {
+  return {'Kid':'🧒','Musician':'🎸','Chef':'👨‍🍳'}[r]||'';
+}
+function toneEmoji(t) {
+  return {'Friendly Tone':'😊','Angry Tone':'😠','Sad Tone':'😢','Serious Tone':'😐'}[t]||'';
+}
+
+// ══════════════════════════════════════════════════════════
+// LOCKED VIEW
+// ══════════════════════════════════════════════════════════
+let LOCKED_VIEW = null;
+
+function switchView(v) {
+  if (LOCKED_VIEW) return;
+  document.querySelectorAll('.view-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.className = 'tab-btn');
+  document.getElementById('view-'+v).classList.add('active');
+  document.getElementById('tab-'+v).className = `tab-btn tab-${v==='p1'?'1':'2'}`;
+  renderAll();
+}
+
+function initView() {
+  const hash = window.location.hash.replace('#','').toLowerCase();
+  if (!['p1','p2'].includes(hash)) return;
+  LOCKED_VIEW = hash;
+  document.getElementById('view-tabs').style.display = 'none';
+  const other = hash === 'p1' ? 'p2' : 'p1';
+  document.getElementById('view-'+other).classList.remove('active');
+  document.getElementById('view-'+hash).classList.add('active');
+}
+
+// ══════════════════════════════════════════════════════════
+// RENDER ALL
+// ══════════════════════════════════════════════════════════
+function renderAll() {
+  if (LOCKED_VIEW === 'p1') { renderP1(); return; }
+  if (LOCKED_VIEW === 'p2') { renderP2(); return; }
+  renderP1(); renderP2();
+}
+
+function syncAndRender() {
+  renderAll();
+  syncState();
+}
+
+// ══════════════════════════════════════════════════════════
+// WEBSOCKET SYNC
+// ══════════════════════════════════════════════════════════
+let ws = null;
+let wsConnected = false;
+
+function connectWS(forceReset = false) {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(`${proto}//${location.host}`);
+
+  ws.onopen = () => {
+    wsConnected = true;
+    updateConnectionBadge(true);
+    ws.send(JSON.stringify({ type:'hello', puzzle:'p3' }));
+    if (forceReset) {
+      S = freshState();
+      renderAll();
+      syncState();
+    }
+  };
+
+  ws.onmessage = (e) => {
+    let msg;
+    try { msg = JSON.parse(e.data); } catch { return; }
+    if (msg.type === 'state' && (!msg.puzzle || msg.puzzle === 'p3')) {
+      applyRemoteState(msg.state);
+    }
+    if (msg.type === 'room' && msg.room?.p3) {
+      applyRemoteState(msg.room.p3);
+    }
+  };
+
+  ws.onclose = () => {
+    wsConnected = false;
+    updateConnectionBadge(false);
+    setTimeout(() => connectWS(false), 2000);
+  };
+
+  ws.onerror = () => ws.close();
+}
+
+function syncState() {
+  if (ws && wsConnected) {
+    ws.send(JSON.stringify({ type:'state', puzzle:'p3', state: syncableState() }));
+  }
+}
+
+function updateConnectionBadge(connected) {
+  const dot = document.getElementById('conn-dot');
+  const lbl = document.getElementById('conn-label');
+  if (!dot||!lbl) return;
+  dot.style.background = connected ? '#5bf5a8' : '#f07070';
+  lbl.textContent = connected ? 'CONNECTED' : 'RECONNECTING...';
+}
+
+// ══════════════════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════════════════
+initView();
+renderAll();
+
+if (location.protocol !== 'file:') {
+  connectWS(location.search.includes('reset'));
+} else {
+  updateConnectionBadge(true);
+  document.getElementById('conn-label').textContent = 'LOCAL MODE';
+}
+</script>
+</body>
+</html>
