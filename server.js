@@ -24,8 +24,22 @@ if (!fs.existsSync(INDEX)) {
 console.log(`Serving HTML from: ${INDEX}`);
 
 // ── HTTP server — serves index.html and any static assets ──────────────────
+const PUZZLE1 = path.join(PUBLIC_DIR, 'puzzle1.html');
+
 const httpServer = http.createServer((req, res) => {
-  let filePath = path.join(PUBLIC_DIR, req.url.split('?')[0]);
+  const urlPath = req.url.split('?')[0];
+
+  // Puzzle 1 — served at /puzzle1 or /puzzle1.html
+  if (urlPath === '/puzzle1' || urlPath === '/puzzle1.html' || urlPath.startsWith('/puzzle1#')) {
+    fs.readFile(PUZZLE1, (err, data) => {
+      if (err) { res.writeHead(404); res.end('puzzle1.html not found — make sure it is in the same folder as server.js'); return; }
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(data);
+    });
+    return;
+  }
+
+  let filePath = path.join(PUBLIC_DIR, urlPath);
   if (filePath === PUBLIC_DIR || req.url === '/' || req.url.startsWith('/#')) {
     filePath = INDEX;
   }
