@@ -57,8 +57,51 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text-prim
 .view-panel::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
 .view-panel.active{display:block;}
 
-/* ── Log feedback banner ── */
-.log-banner{background:var(--oklt);border-bottom:2px solid var(--okbd);padding:8px 14px;
+/* ── Prompt panel ── */
+.prompt-panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);
+  overflow:hidden;box-shadow:var(--shadow-sm);}
+.prompt-header{display:flex;align-items:center;gap:.4rem;padding:.5rem .9rem;
+  background:var(--bg);border-bottom:1px solid var(--border);}
+.prompt-dot{width:10px;height:10px;border-radius:50%;background:var(--border);}
+.prompt-title{font-size:11px;font-weight:600;color:var(--text-muted);letter-spacing:.06em;
+  text-transform:uppercase;margin-left:.2rem;}
+.prompt-body{padding:.9rem 1.1rem;}
+.prompt-bubble{font-size:14px;color:var(--text-primary);line-height:2.1;
+  background:var(--bg);border-radius:var(--radius-sm);padding:.75rem 1rem;}
+.blank{display:inline-block;min-width:80px;padding:.1rem .4rem;border-radius:4px;
+  border:1.5px dashed var(--border);background:var(--surface);color:var(--text-muted);
+  font-weight:600;text-align:center;transition:all .3s;}
+.blank.filled-persona {background:var(--purple-bg);border-color:var(--purple-border);color:var(--purple-text);border-style:solid;}
+.blank.filled-recipient{background:var(--pink-bg);  border-color:var(--pink-border);  color:var(--pink-text);border-style:solid;}
+.blank.filled-tone    {background:var(--orange-bg); border-color:var(--orange-border);color:var(--orange-text);border-style:solid;}
+.hl-blue {background:var(--blue-bg);  color:var(--blue-text); border-radius:3px;padding:1px 5px;}
+.hl-green{background:var(--green-bg); color:var(--green-text);border-radius:3px;padding:1px 5px;}
+
+/* ── Locked options ── */
+.opt.locked-on {border-color:var(--green-border);background:var(--green-bg);color:var(--green-text);cursor:default;pointer-events:none;opacity:1;}
+.opt.locked-off{opacity:.35;cursor:default;pointer-events:none;}
+
+/* ── PARTS lock row (P2) ── */
+.parts-lock-row{display:flex;align-items:center;gap:1rem;background:var(--surface);
+  border:1px solid var(--border);border-radius:var(--radius-lg);padding:.9rem 1.1rem;
+  box-shadow:var(--shadow-sm);}
+.lock-wrap{display:flex;flex-direction:column;align-items:center;gap:.25rem;flex-shrink:0;}
+.lock-emoji{font-size:26px;transition:transform .3s;}
+.lock-emoji.open{transform:rotate(-15deg);}
+.lock-label{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);}
+.lock-label.green{color:#1D9E75;}
+.parts-letters{display:flex;gap:.5rem;}
+
+/* ── Output card (P1 phase 2) ── */
+.output-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);
+  padding:1rem 1.2rem;box-shadow:var(--shadow-sm);}
+.output-card-label{font-size:11px;color:var(--text-muted);text-transform:uppercase;
+  letter-spacing:.06em;font-weight:600;margin-bottom:.6rem;}
+.output-bullets{list-style:none;display:flex;flex-direction:column;gap:.45rem;}
+.output-bullets li{font-size:14px;color:var(--text-primary);line-height:1.6;
+  padding-left:1.2rem;position:relative;}
+.output-bullets li::before{content:'•';position:absolute;left:0;color:var(--text-muted);}
+
   display:flex;align-items:center;gap:8px;font-weight:600;color:var(--ok);font-size:13px;
   position:sticky;top:0;z-index:9;margin:-1rem -1rem 1rem -1rem;}
 
@@ -545,111 +588,121 @@ function renderP1() {
   let h = '';
 
   if (S.phase === 1) {
+    // Panels grid — Persona & Recipient selectable, Aim & Structure locked
     h += `<div class="section">
-      <div class="section-label">Your Assignment</div>
-      <div class="hint-box">
-        <div class="hint-avatar">P1</div>
-        <div class="hint-text">You are an AI writing assistant. Your student has given you a writing task but hasn't told you all the settings yet. Use the PARTS framework to generate a story — your teammate will read each output and try to work out your settings.</div>
-      </div>
-    </div>`;
-
-    // Costume display
-    const pEmoji = p1CostumeEmoji(S.p1.persona);
-    const rEmoji = p1RecipientEmoji(S.p1.recipient);
-    h += `<div class="section">
-      <div class="section-label">Your Character</div>
-      <div class="costume-display">
-        <div class="costume-slot">
-          <div class="costume-emoji">${pEmoji||'❓'}</div>
-          <div class="costume-label">Persona</div>
-          <div class="costume-blank blank${S.p1.persona?' filled-persona':''}">${S.p1.persona||'—'}</div>
-        </div>
-        <div class="costume-slot">
-          <div class="costume-emoji">${rEmoji||'❓'}</div>
-          <div class="costume-label">Recipient</div>
-          <div class="costume-blank blank${S.p1.recipient?' filled-recipient':''}">${S.p1.recipient||'—'}</div>
-        </div>
-        <div class="costume-slot">
-          <div class="costume-emoji">${S.p1.tone?toneEmoji(S.p1.tone):'❓'}</div>
-          <div class="costume-label">Tone</div>
-          <div class="costume-blank blank${S.p1.tone?' filled-tone':''}">${S.p1.tone?S.p1.tone.replace(' Tone',''):'—'}</div>
-        </div>
-      </div>
-    </div>`;
-
-    // PARTS tiles
-    h += `<div class="section">
-      <div class="section-label">PARTS Framework</div>
-      <div class="parts-display">
-        <span class="parts-label">PARTS</span>
-        <div class="parts-tiles">
-          ${partsTile('P','Persona','The writing style or character voice the AI uses.',S.g.pOk)}
-          ${partsTile('A','Aim','The goal or purpose of the writing.',false,true)}
-          ${partsTile('R','Recipient','Who the output is written for.',S.g.rOk)}
-          ${partsTile('T','Tone','The emotional quality of the writing.',S.g.tOk)}
-          ${partsTile('S','Structure','How the output is formatted.',false,true)}
-        </div>
-      </div>
-    </div>`;
-
-    // Option panels
-    h += `<div class="section">
-      <div class="section-label">Select PARTS Settings</div>
       <div class="panels-grid">
+
         <div class="panel panel-purple">
-          <div class="panel-label visible">Persona</div>
+          <div class="panel-label${S.g.pOk?' visible':''}" id="lbl-persona">Persona</div>
           ${optsHTML('persona',[
             {v:'Drill Sergeant',e:'🪖',label:'Drill Sergeant'},
             {v:'Shakespearean Playwright',e:'🎭',label:'Playwright'},
             {v:'Surfer Dude',e:'🏄',label:'Surfer Dude'},
             {v:'Teacher',e:'📚',label:'Teacher'},
-          ],S.p1.persona,'p1-persona')}
+          ],S.p1.persona)}
         </div>
+
+        <div class="panel panel-green">
+          <div class="panel-label visible">Aim</div>
+          <div class="opts">
+            <div class="opt locked-on"><span>🦓</span><span class="opt-label">Story about zebras</span></div>
+            <div class="opt locked-off"><span>🔬</span><span class="opt-label">Science report</span></div>
+            <div class="opt locked-off"><span>🎤</span><span class="opt-label">Elevator pitch</span></div>
+            <div class="opt locked-off"><span>🎮</span><span class="opt-label">Game script</span></div>
+          </div>
+          <div class="panel-locked-note">🔒 locked</div>
+        </div>
+
         <div class="panel panel-pink">
-          <div class="panel-label visible">Recipient</div>
+          <div class="panel-label${S.g.rOk?' visible':''}" id="lbl-recipient">Recipient</div>
           ${optsHTML('recipient',[
             {v:'Kid',e:'🧒',label:'Kid'},
             {v:'Musician',e:'🎸',label:'Musician'},
             {v:'Chef',e:'👨‍🍳',label:'Chef'},
-          ],S.p1.recipient,'p1-recipient')}
+          ],S.p1.recipient)}
         </div>
-        <div class="panel panel-orange" style="grid-column:1/-1">
-          <div class="panel-label visible">Tone</div>
+
+        <div class="panel panel-orange">
+          <div class="panel-label${S.g.tOk?' visible':''}" id="lbl-tone">Tone</div>
           ${optsHTML('tone',[
             {v:'Friendly Tone',e:'😊',label:'Friendly'},
             {v:'Angry Tone',e:'😠',label:'Angry'},
             {v:'Sad Tone',e:'😢',label:'Sad'},
             {v:'Serious Tone',e:'😐',label:'Serious'},
-          ],S.p1.tone,'p1-tone',true)}
+          ],S.p1.tone)}
         </div>
+
+        <div class="panel panel-blue">
+          <div class="panel-label visible">Structure</div>
+          <div class="opts four-col">
+            <div class="opt locked-off"><span>📜</span><span class="opt-label">Poem</span></div>
+            <div class="opt locked-on"><span>✏️</span><span class="opt-label">3-sentences-max</span></div>
+            <div class="opt locked-off"><span>📄</span><span class="opt-label">Full essay</span></div>
+            <div class="opt locked-off"><span>•</span><span class="opt-label">Bullet points</span></div>
+          </div>
+          <div class="panel-locked-note">🔒 locked</div>
+        </div>
+
       </div>
     </div>`;
 
-    const canGen = S.p1.persona && S.p1.recipient && S.p1.tone && !S.g.winShown;
+    // AI Prompt with fill-in blanks
+    const personaVal  = S.p1.persona  || '___';
+    const recipientVal= S.p1.recipient|| '___';
+    const toneVal     = S.p1.tone ? S.p1.tone.replace(' Tone','') : '___';
+    const pClass  = S.p1.persona   ? 'blank filled-persona'  : 'blank';
+    const rClass  = S.p1.recipient ? 'blank filled-recipient' : 'blank';
+    const tClass  = S.p1.tone      ? 'blank filled-tone'      : 'blank';
+    const canGen  = S.p1.persona && S.p1.recipient && S.p1.tone && !S.g.winShown;
+
     h += `<div class="section">
-      <button class="gen-btn" onclick="generateStory()" ${canGen?'':'disabled'}>
-        ✨ Generate Story
-      </button>
+      <div class="prompt-panel">
+        <div class="prompt-header">
+          <div class="prompt-dot"></div><div class="prompt-dot"></div><div class="prompt-dot"></div>
+          <span class="prompt-title">AI Prompt</span>
+        </div>
+        <div class="prompt-body">
+          <div class="prompt-bubble">
+            You are a <span class="${pClass}" id="blank-persona">${personaVal}</span>.
+            Write a <span class="hl-blue">3-sentence max</span>
+            <span class="hl-green">story about zebras</span>
+            for a <span class="${rClass}" id="blank-recipient">${recipientVal}</span>
+            with a <span class="${tClass}" id="blank-tone">${toneVal}</span>.
+          </div>
+        </div>
+        <button class="gen-btn" onclick="generateStory()" ${canGen?'':'disabled'}>Generate Response</button>
+      </div>
     </div>`;
 
-    // P1's previous generations (shown to P1 too, in reverse)
-    if (S.p1History.length > 0) {
+  } else {
+    // Phase 2 — P1 sees the final AI output (bullet points from the winning story)
+    const lastStory = S.p1History[0];
+    h += `<div class="phase-banner">
+      <div class="phase-banner-title">✓ Phase 2 — Your teammate is reverse-engineering your settings</div>
+    </div>`;
+
+    if (lastStory) {
+      // Show winning output as bullet-point style
+      const sentences = lastStory.story.split(/(?<=[.!?])\s+/).filter(Boolean);
       h += `<div class="section">
-        <div class="section-label">Your Generated Stories</div>
-        <div class="response-stack">
-          ${S.p1History.map(c => responseCardHTML(c)).join('')}
+        <div class="output-card">
+          <div class="output-card-label">Generated Output</div>
+          <ul class="output-bullets">
+            ${sentences.map(s => `<li>${s}</li>`).join('')}
+          </ul>
         </div>
       </div>`;
     }
 
-  } else {
-    // Phase 2 — P1 sees P2's guessing panel
-    h += `<div class="phase-banner">
-      <div class="phase-banner-title">✓ Phase 2 Unlocked</div>
-      Your teammate has received the generated stories. Now they need to reverse-engineer your PARTS settings. Watch their progress below.
-    </div>`;
-
-    h += p2GuessingPanelHTML();
+    // Previous attempts summary
+    if (S.p1History.length > 1) {
+      h += `<div class="section">
+        <div class="section-label">Previous attempts (${S.p1History.length - 1})</div>
+        <div class="response-stack">
+          ${S.p1History.slice(1).map(c => responseCardHTML(c)).join('')}
+        </div>
+      </div>`;
+    }
   }
 
   el.innerHTML = h;
@@ -664,55 +717,76 @@ function renderP2() {
   let h = '';
 
   if (S.phase === 1) {
+    // Assignment context
     h += `<div class="section">
-      <div class="section-label">Waiting for stories</div>
       <div class="hint-box">
         <div class="hint-avatar">P2</div>
-        <div class="hint-text">Your teammate is generating AI stories using secret PARTS settings. Each story they generate will appear here. Read carefully — you'll need to figure out their settings in Phase 2!</div>
+        <div class="hint-text">I need to generate a really good story for my English class homework!</div>
       </div>
     </div>`;
 
-    // Lock display
+    // PARTS lock row with tooltips
+    const tileHTML = (letter, name, desc, unlocked, alwaysUnlocked) => {
+      const enabled = unlocked || alwaysUnlocked;
+      const colors = {P:'purple',A:'green',R:'pink',T:'orange',S:'blue'};
+      const c = colors[letter];
+      return `<div class="parts-tile${enabled?' tip-enabled':''}" role="listitem" tabindex="${enabled?'0':'-1'}"
+        style="background:var(--${c}-bg);color:var(--${c}-text);border-color:var(--${c}-border)">
+        ${letter}
+        <div class="tile-tooltip">
+          <div class="tt-name">${name}</div>
+          <div class="tt-desc">${desc}</div>
+        </div>
+      </div>`;
+    };
+
+    const phaseOpen = S.phase === 2;
     h += `<div class="section">
-      <div class="lock-display">
-        <span class="lock-emoji">${S.phase === 1 ? '🔒' : '🔓'}</span>
-        <span class="lock-label${S.phase === 2 ? ' green' : ''}">
-          ${S.phase === 1 ? 'PARTS settings locked until Phase 2' : 'UNLOCKED'}
-        </span>
+      <div class="parts-lock-row">
+        <div class="lock-wrap">
+          <div class="lock-emoji${phaseOpen?' open':''}">${phaseOpen?'🔓':'🔒'}</div>
+          <div class="lock-label${phaseOpen?' green':''}">${phaseOpen?'UNLOCKED':'PARTS'}</div>
+        </div>
+        <div class="parts-letters">
+          ${tileHTML('P','Persona','Who the AI is roleplaying as — the voice and perspective it uses.',S.g.pOk,false)}
+          ${tileHTML('A','Aim','The goal of your prompt — what you want the AI to produce. Here: a story about zebras.',false,true)}
+          ${tileHTML('R','Recipient','Who the output is written for — the intended audience of the story.',S.g.rOk,false)}
+          ${tileHTML('T','Tone','The emotional quality of the writing — friendly, angry, sad, or serious.',S.g.tOk,false)}
+          ${tileHTML('S','Structure','How the output is formatted or organized. Here: a 3-sentence max response.',false,true)}
+        </div>
       </div>
     </div>`;
 
+    // Response stack — stories arrive from P1
     if (S.p1History.length > 0) {
       h += `<div class="section">
-        <div class="section-label">Stories from your teammate</div>
         <div class="response-stack">
           ${S.p1History.map(c => responseCardHTML(c)).join('')}
         </div>
       </div>`;
     } else {
       h += `<div class="section">
-        <div style="color:var(--text-muted);font-size:14px;font-style:italic;">No stories yet — your teammate is still choosing settings.</div>
+        <div style="color:var(--text-muted);font-size:14px;font-style:italic;">Waiting for your teammate to generate a story...</div>
       </div>`;
     }
 
   } else {
-    // Phase 2 — P2 guesses
+    // Phase 2 — P2 guesses PARTS settings
     h += `<div class="phase-banner">
       <div class="phase-banner-title">Phase 2 — Reverse Engineer the PARTS</div>
       You've seen all the stories. Now figure out the exact PARTS settings your teammate used!
     </div>`;
 
-    // Show P1's stories for reference
+    h += p2GuessingPanelHTML();
+
     if (S.p1History.length > 0) {
       h += `<div class="section">
-        <div class="section-label">Stories to analyse</div>
+        <div class="section-label">Phase 1 attempts</div>
         <div class="response-stack">
           ${S.p1History.map(c => responseCardHTML(c)).join('')}
         </div>
       </div>`;
     }
-
-    h += p2GuessingPanelHTML();
   }
 
   el.innerHTML = h;
