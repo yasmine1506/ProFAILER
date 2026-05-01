@@ -330,6 +330,31 @@ function getPathProbs(seq){
 function pathScore(seq){return getPathProbs(seq).reduce((a,b)=>a+(b||0),0);}
 function inputSeqToEnglish(tx){return tx.inputSeq.map(s=>INPUT_CODEX[s]||s).join(' ');}
 function outputSeqToEnglish(seq){return seq.map(g=>OUTPUT_CODEX[g]||g).join(' ');}
+
+// Compute the maximum possible score for a lattice (greedy path score)
+function greedyScore(txIdx){
+  const lattice=LATTICES[txIdx];
+  // For each column transition, find the max bigram from any symbol in col ci to any in col ci+1
+  // We walk greedily: start with all col-0 symbols, pick highest running score
+  let best=0;
+  for(let startRow=0;startRow<5;startRow++){
+    let total=0;
+    let cur=lattice[0][startRow];
+    for(let ci=0;ci<4;ci++){
+      let maxScore=-Infinity;
+      let maxSym=null;
+      for(let ri=0;ri<5;ri++){
+        const s=getBigram(cur,lattice[ci+1][ri]);
+        if(s>maxScore){maxScore=s;maxSym=lattice[ci+1][ri];}
+      }
+      total+=maxScore;
+      cur=maxSym;
+    }
+    if(total>best)best=total;
+  }
+  return best;
+}
+
 function stHtml(v){
   const cls=v==='verified'?'st-verified':v==='hallucination'?'st-hallucination':'st-pending';
   const lbl=v==='verified'?'Verified Truth':v==='hallucination'?'Hallucination':'Pending Response';
@@ -482,28 +507,28 @@ function submitInputTranslation(txIdx){
 function showSearleNotes(){S.showResultModal=false;S.showNotesModal=true;renderModal();}
 function showLogModal(who){S.showLogModal=who;renderModal();}
 function closeModal(){S.showLogModal=null;S.showConfirm=false;S.showNotesModal=false;S.showResultModal=false;renderModal();}
-function showConfirmTransmit(){S.showConfirm=true;renderModal();}
-
-function confirmTransmit(){
-  for(let i=0;i<2;i++){
-    const ll=lastLog1(i);
-    S.finalVerdicts[i]=ll?ll.verdict:'hallucination';
+function showConfirmTransmit(){
+  // Block if either transmission has no logged output
+  const missing=[];
+  if(!lastLog1(0))missing.push('Transmission 01');
+  if(!lastLog1(1))missing.push('Transmission 02');
+  if(missing.length){
+    S.showLogModal=null;S.showConfirm=false;S.showNotesModal=false;
+    // Reuse modal system for the error
+    const root=document.getElementById('modal-root');
+    root.innerHTML=`<div class="modal-overlay" onclick="if(event.target===this)this.innerHTML=''">
+      <div class="modal-box">
+        <div class="modal-title" style="color:var(--err);">⚠ Incomplete Transmission</div>
+        <div style="font-size:14px;color:var(--mu);line-height:1.7;margin-bottom:16px;">
+          Cannot transmit — no output logged for <strong>${missing.join(' and ')}</strong>.<br>
+          Log at least one output sequence for each transmission before proceeding.
+        </div>
+        <button class="btn" onclick="document.getElementById('modal-root').innerHTML=''">Go back</button>
+      </div>
+    </div>`;
+    return;
   }
-  S.transmitted=true;S.showConfirm=false;S.phase=2;S.p2activeTx=0;
-  renderModal();renderAll();
-}
-function confirmTransmit2(){
-  for(let i=0;i<2;i++){
-    const ll=lastLog2(i)||lastLog1(i);
-    S.finalVerdicts[i]=ll?ll.verdict:'hallucination';
-  }
-  S.p2transmitted=true;
-  S.showConfirm=false;
-  const bothVerified=S.p2logs[0].length>0&&S.p2logs[1].length>0
-    &&lastLog2(0).verdict==='verified'&&lastLog2(1).verdict==='verified';
-  S.p2result=bothVerified?'win':'lose';
-  S.showResultModal=true;
-  renderModal();renderAll();
+  S.showConfirm=true;renderModal();
 }
 
 function resetGame(){S=freshState();renderModal();renderAll();}
@@ -617,82 +642,140 @@ function renderModal(){
    RENDER SHARED
 ═══════════════════════════════════════════ */
 /* ═══════════════════════════════════════════
-   COMBINED LATTICE + INLINE PROBABILITY HELPER
-   Renders a lattice grid where probability scores
-   between col N and col N+1 appear inline once
-   a symbol is selected in col N.
-   accentColor: CSS variable string for selected state
-   onSelect: JS function call string like "selectCell2(0,col,row)"
+   NEURAL NETWORK LATTICE RENDERER
+   showSymbols=true  → nodes show glyphs (Player 1)
+   showScores=true   → connection lines show bigram scores (Player 2)
+   clickable=true    → nodes are clickable (Player 1 phase 1, both players phase 2)
 ═══════════════════════════════════════════ */
-function renderLatticeWithProbs(lattice, sel, accentColor, accentLt, accentBd, selectFnName, txIdx, p1seq){
-  const numCols=lattice.length;
-  const numRows=lattice[0].length;
-  const CELL=80; const GAP=8; const LABEL_H=22;
-  let h=`<div style="overflow-x:auto;"><div style="display:flex;align-items:flex-start;gap:0;min-width:max-content;">`;
-  for(let ci=0;ci<numCols;ci++){
-    // Symbol column
-    h+=`<div style="display:flex;flex-direction:column;gap:${GAP}px;align-items:center;">
-      <div style="height:${LABEL_H}px;display:flex;align-items:center;font-family:var(--mono);font-size:12px;color:var(--dim);letter-spacing:.06em;text-align:center;">Col ${ci+1}</div>`;
-    for(let ri=0;ri<numRows;ri++){
+function renderNeuralLattice({lattice, sel, accentColor, selectFnName, txIdx, p1seq,
+                               showSymbols=true, showScores=false, clickable=true}){
+  const COLS=lattice.length;
+  const ROWS=lattice[0].length;
+  const NODE_R=28;
+  const NODE_GAP=120;  // space between node columns
+  const SCORE_GAP=52;  // extra gap before each column (except first) for score labels
+  const ROW_H=80;
+  const PAD_X=NODE_R+8;
+  const PAD_Y=NODE_R+30;
+
+  // x of the node circle in column ci
+  const nodeX=ci=>PAD_X + ci*(NODE_GAP+(showScores&&ci>0?SCORE_GAP:0));
+  // Simpler uniform version
+  const nx=ci=>PAD_X + ci*(NODE_GAP+(showScores?SCORE_GAP:0));
+  const ny=ri=>PAD_Y + ri*ROW_H;
+  const W=nx(COLS-1)+NODE_R+12;
+  const H=PAD_Y+(ROWS-1)*ROW_H+NODE_R+12;
+
+  let svg=`<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg"
+    style="width:100%;max-width:min(${W}px,100%);display:block;overflow:visible;">`;
+
+  // TOKEN labels
+  for(let ci=0;ci<COLS;ci++){
+    svg+=`<text x="${nx(ci)}" y="${PAD_Y-NODE_R-12}" text-anchor="middle"
+      font-family="IBM Plex Mono,monospace" font-size="11" font-weight="600"
+      letter-spacing="1" fill="#888898">TOKEN ${ci+1}</text>`;
+  }
+
+  // Connection lines (behind nodes)
+  for(let ci=0;ci<COLS-1;ci++){
+    for(let ri=0;ri<ROWS;ri++){
+      const fromG=lattice[ci][ri];
+      const isFromSel=sel[ci]===fromG;
+      const isPathSrc=isFromSel;
+      for(let rj=0;rj<ROWS;rj++){
+        const toG=lattice[ci+1][rj];
+        const isToSel=sel[ci+1]===toG;
+        const isPathEdge=isFromSel&&isToSel;
+        let stroke='#e2e8f0',strokeW=1,opacity=0.5;
+        if(isPathEdge){stroke=accentColor;strokeW=2.5;opacity=1;}
+        else if(isPathSrc&&showScores){stroke='#94a3b8';strokeW=1;opacity=0.6;}
+        svg+=`<line x1="${nx(ci)}" y1="${ny(ri)}" x2="${nx(ci+1)}" y2="${ny(rj)}"
+          stroke="${stroke}" stroke-width="${strokeW}" opacity="${opacity}"/>`;
+      }
+    }
+  }
+
+  // Score labels — anchored at destination node Y, in dedicated column gap
+  if(showScores){
+    for(let ci=0;ci<COLS-1;ci++){
+      const fromSym=sel[ci];
+      // The score column sits between nx(ci) and nx(ci+1)
+      // Place labels at x = nx(ci+1) - NODE_R - 4 (just left of destination node)
+      const labelX=nx(ci+1)-NODE_R-26;
+      for(let rj=0;rj<ROWS;rj++){
+        const toG=lattice[ci+1][rj];
+        const isToSel=sel[ci+1]===toG;
+        const y=ny(rj);
+        if(fromSym){
+          const score=getBigram(fromSym,toG);
+          const hilite=isToSel;
+          svg+=`<rect x="${labelX-16}" y="${y-11}" width="32" height="22" rx="5"
+            fill="${hilite?accentColor:'#f1f5f9'}"/>`;
+          svg+=`<text x="${labelX}" y="${y+6}" text-anchor="middle"
+            font-family="IBM Plex Mono,monospace" font-size="12" font-weight="700"
+            fill="${hilite?'#fff':'#1e293b'}">${score}</text>`;
+        } else {
+          svg+=`<text x="${labelX}" y="${y+5}" text-anchor="middle"
+            font-family="IBM Plex Mono,monospace" font-size="12"
+            fill="#cbd5e1">—</text>`;
+        }
+      }
+    }
+  }
+
+  // Nodes (on top)
+  for(let ci=0;ci<COLS;ci++){
+    for(let ri=0;ri<ROWS;ri++){
+      const x=nx(ci),y=ny(ri);
       const g=lattice[ci][ri];
       const isSelected=sel[ci]===g;
       const isP1Same=p1seq&&p1seq[ci]===g;
-      h+=`<div onclick="${selectFnName}(${txIdx},${ci},${ri})"
-        style="width:${CELL}px;height:${CELL}px;border-radius:6px;display:flex;align-items:center;justify-content:center;
-          font-family:var(--mono);font-size:34px;cursor:pointer;user-select:none;transition:all .15s;
-          border:2px solid ${isSelected?accentColor:isP1Same?'var(--warnbd)':'var(--bd)'};
-          background:${isSelected?accentColor:isP1Same?'var(--warnlt)':'var(--bg-inset)'};
-          color:${isSelected?'#fff':isP1Same?'var(--warn)':'var(--tx)'};">
-        ${g}
-      </div>`;
-    }
-    h+=`</div>`;
-    // Probability strip between columns
-    if(ci < numCols-1){
-      const fromSym=sel[ci];
-      const nextColSyms=lattice[ci+1];
-      // Invisible label placeholder so rows align with symbol column
-      h+=`<div style="display:flex;flex-direction:column;gap:${GAP}px;align-items:center;">
-        <div style="height:${LABEL_H}px;"></div>`;
-      for(let ri=0;ri<numRows;ri++){
-        const toSym=nextColSyms[ri];
-        const score=fromSym?getBigram(fromSym,toSym):null;
-        const isSelNext=sel[ci+1]===toSym;
-        h+=`<div style="width:52px;height:${CELL}px;display:flex;align-items:center;justify-content:center;">
-          <div style="font-family:var(--mono);font-size:15px;font-weight:600;
-            color:${score!==null?(isSelNext?accentColor:'var(--mu)'):'var(--bd2)'};
-            text-align:center;line-height:1;">
-            ${score!==null?score:'—'}
-          </div>
-        </div>`;
+      const fill=isSelected?accentColor:isP1Same?'#fef3dc':'#f8fafc';
+      const strokeC=isSelected?accentColor:isP1Same?'#e0c070':'#cbd5e1';
+      const strokeW=isSelected?3:isP1Same?2:1.5;
+      svg+=`<circle cx="${x}" cy="${y}" r="${NODE_R}"
+        fill="${fill}" stroke="${strokeC}" stroke-width="${strokeW}"
+        ${clickable?`style="cursor:pointer" onclick="${selectFnName}(${txIdx},${ci},${ri})"`:''} />`;
+      if(showSymbols){
+        svg+=`<text x="${x}" y="${y+8}" text-anchor="middle"
+          font-family="IBM Plex Mono,monospace" font-size="20"
+          fill="${isSelected?'#fff':isP1Same?'#8a5000':'#1e293b'}"
+          pointer-events="none">${g}</text>`;
+      } else if(isSelected){
+        svg+=`<circle cx="${x}" cy="${y}" r="7" fill="${accentColor}" opacity="0.9" pointer-events="none"/>`;
       }
-      h+=`</div>`;
     }
   }
-  h+=`</div></div>`;
-  return h;
+
+  svg+='</svg>';
+  return`<div style="overflow-x:auto;padding:8px 4px;">${svg}</div>`;
 }
+
 
 /* Renders a sequence with bigram probabilities shown between each adjacent token pair */
 function seqWithProbs(seq, accentColor, p1seqRef){
   let h=`<div style="display:flex;align-items:flex-start;gap:0;flex-wrap:nowrap;overflow-x:auto;padding:8px 2px;">`;
   for(let i=0;i<seq.length;i++){
-    const g=seq[i];
-    const word=OUTPUT_CODEX[g]||g;
-    const isChanged=p1seqRef&&p1seqRef.length&&p1seqRef[i]&&g!==p1seqRef[i];
-    const isSame=p1seqRef&&p1seqRef.length&&p1seqRef[i]&&g===p1seqRef[i];
+    const g=seq[i];  // may be null for empty slots
+    const word=g?OUTPUT_CODEX[g]||g:'';
+    const isReal=g&&g!=='·';
+    const prevG=seq[i-1];
+    const prevReal=prevG&&prevG!=='·';
+    const isChanged=isReal&&p1seqRef&&p1seqRef.length&&p1seqRef[i]&&g!==p1seqRef[i];
+    const isSame=isReal&&p1seqRef&&p1seqRef.length&&p1seqRef[i]&&g===p1seqRef[i];
     if(i>0){
-      const prob=getBigram(seq[i-1],g);
+      // Only show probability when BOTH adjacent symbols are real selected glyphs
+      const prob=(isReal&&prevReal)?getBigram(prevG,g):null;
       h+=`<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;width:36px;flex-shrink:0;margin-top:12px;">
-        <span style="font-family:var(--mono);font-size:11px;font-weight:600;color:${accentColor}">${prob}</span>
+        <span style="font-family:var(--mono);font-size:11px;font-weight:600;color:${accentColor}">${prob!==null?prob:''}</span>
         <span style="font-size:14px;color:var(--bd2);">→</span>
       </div>`;
     }
     h+=`<div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex-shrink:0;">
       <div style="width:46px;height:46px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:18px;
-        border:2px solid ${isChanged?'var(--err)':isSame?'var(--ok)':accentColor};
-        background:${isChanged?'var(--errlt)':isSame?'var(--oklt)':'var(--bg-inset)'};
-        color:${isChanged?'var(--err)':isSame?'var(--ok)':accentColor};">${g}</div>
+        border:2px solid ${isChanged?'var(--err)':isSame?'var(--ok)':isReal?accentColor:'var(--bd)'};
+        background:${isChanged?'var(--errlt)':isSame?'var(--oklt)':isReal?'var(--bg-inset)':'var(--bg-inset)'};
+        color:${isChanged?'var(--err)':isSame?'var(--ok)':isReal?accentColor:'var(--dim)'};">${g||'·'}</div>
       <div style="font-size:10px;font-weight:600;color:${isChanged?'var(--err)':isSame?'var(--ok)':'var(--mu)'};text-align:center;max-width:60px;">${word}</div>
     </div>`;
   }
@@ -723,48 +806,71 @@ function sharedScreenHTML(){
         }).join('')}
       </div></div>`;
     }
-    h+=`<div class="sec"><div class="sec-lbl">Transmission Log</div>`;
+    h+=`<div class="sec"><div class="sec-lbl">Transmissions</div>`;
     TRANSMISSIONS.forEach((tx,i)=>{
       const ll=lastLog1(i);
       const isActive=S.activeTx===i;
-      h+=`<div class="tx-card${isActive?' active':''}" onclick="setActiveTx(${i})">
-        <div class="tx-card-hdr"><span>XENOX-7 TRANSMISSION 0${i+1}</span></div>
-        <div class="tx-seq">
-          ${tx.inputSeq.map((sym,si)=>`<span class="tx-sym">${sym}</span>${si<tx.inputSeq.length-1?'<span class="tx-arrow">→</span>':''}`).join('')}
+      const score=ll?pathScore(ll.seq):null;
+      const maxScore=greedyScore(i);
+      const isHighest=score!==null&&score>=maxScore;
+      const justLogged=S.lastLogged&&S.lastLogged.txIdx===i&&Date.now()-S.lastLogged.time<2000;
+
+      // Score / verdict badge for output
+      let scoreBadge='';
+      if(ll){
+        if(isHighest){
+          scoreBadge=`<span style="font-family:var(--mono);font-size:11px;font-weight:600;padding:2px 8px;border-radius:3px;background:var(--oklt);border:1px solid var(--okbd);color:var(--ok);">Highest probability achieved</span>`;
+        } else {
+          scoreBadge=`<span style="font-family:var(--mono);font-size:11px;font-weight:600;padding:2px 8px;border-radius:3px;background:var(--errlt);border:1px solid var(--errbd);color:var(--err);">Score: ${score}</span>`;
+        }
+        if(S.transmitted){
+          const v=S.finalVerdicts[i]||ll.verdict;
+          const vcls=v==='verified'?'var(--ok)':v==='hallucination'?'var(--err)':'var(--dim)';
+          const vbg=v==='verified'?'var(--oklt)':v==='hallucination'?'var(--errlt)':'var(--bg-inset)';
+          const vbd=v==='verified'?'var(--okbd)':v==='hallucination'?'var(--errbd)':'var(--bd2)';
+          scoreBadge+=`<span style="font-family:var(--mono);font-size:11px;font-weight:600;padding:2px 8px;border-radius:3px;background:${vbg};border:1px solid ${vbd};color:${vcls};margin-left:4px;">${v==='verified'?'Verified Truth':'Hallucination'}</span>`;
+        }
+      }
+
+      // Greyed out style when not active
+      const dimStyle=isActive?'':'opacity:0.38;filter:grayscale(0.6);';
+      const borderStyle=isActive?'border:2px solid var(--p1);':'border:1px solid var(--bd);';
+
+      h+=`<div onclick="setActiveTx(${i})" style="border-radius:6px;margin-bottom:10px;overflow:hidden;cursor:pointer;
+        ${borderStyle}${dimStyle}transition:opacity .2s,filter .2s;
+        ${justLogged?'outline:2px solid var(--ok);':''} ">
+
+        <!-- Input strip -->
+        <div style="background:var(--bg-inset);padding:9px 12px;border-bottom:1px solid var(--bd);
+          display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <span style="font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.1em;
+            color:${isActive?'var(--p1)':'var(--dim)'};text-transform:uppercase;">
+            TX-0${i+1} INPUT</span>
+          <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;">
+            ${tx.inputSeq.map((sym,si)=>`<span class="tx-sym">${sym}</span>${si<tx.inputSeq.length-1?'<span class="tx-arrow">→</span>':''}`).join('')}
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;margin-left:auto;">
+            <span style="font-family:var(--mono);font-size:10px;color:var(--dim);letter-spacing:.06em;">SEED</span>
+            <span class="tx-sym seed">${tx.seed}</span>
+          </div>
         </div>
-        <div style="margin-top:10px;display:flex;align-items:center;gap:8px;">
-          <span style="font-family:var(--mono);font-size:10px;color:var(--dim);letter-spacing:.08em;">RESPONSE SEED</span>
-          <span class="tx-sym seed">${tx.seed}</span>
+
+        <!-- Output strip -->
+        <div style="background:#fff;padding:9px 12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-height:40px;">
+          <span style="font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.1em;
+            color:${isActive?'var(--p1)':'var(--dim)'};text-transform:uppercase;">
+            TX-0${i+1} OUTPUT</span>
+          ${ll
+            ?`<span style="font-family:var(--mono);font-size:14px;letter-spacing:3px;">${ll.seq.join(' ')}</span>
+               <div style="display:flex;gap:4px;flex-wrap:wrap;margin-left:auto;">${scoreBadge}</div>`
+            :`<span style="font-size:12px;color:var(--dim);font-style:italic;">No sequence logged yet</span>`
+          }
         </div>
+
       </div>`;
     });
     h+=`</div>`;
-    h+=`<div class="sec"><div class="sec-lbl">Verdict Log</div>`;
-    let any=false;
-    for(let i=0;i<2;i++){
-      const ll=lastLog1(i);
-      if(ll){
-        any=true;
-        const score=pathScore(ll.seq);
-        const v=ll.verdict;
-        const vcls=v==='verified'?'var(--ok)':v==='hallucination'?'var(--err)':'var(--dim)';
-        const vbg=v==='verified'?'var(--oklt)':v==='hallucination'?'var(--errlt)':'var(--bg-inset)';
-        const vbd=v==='verified'?'var(--okbd)':v==='hallucination'?'var(--errbd)':'var(--bd2)';
-        const vlbl=v==='verified'?'Verified Truth':v==='hallucination'?'Hallucination':'—';
-        const justLogged=S.lastLogged&&S.lastLogged.txIdx===i&&Date.now()-S.lastLogged.time<2000;
-        h+=`<div class="vlog-entry" style="border-left:3px solid ${vcls};${justLogged?'background:var(--oklt);border-color:var(--okbd);':''}transition:background .3s;">
-          <div class="vlog-row" style="margin-bottom:4px;">
-            <span class="vlog-tx">TX-0${i+1}</span>
-            <span class="vlog-seq">${ll.seq.join(' ')}</span>
-            <span style="font-family:var(--mono);font-size:11px;font-weight:600;padding:3px 10px;border-radius:3px;background:${vbg};border:1px solid ${vbd};color:${vcls};">${vlbl}</span>
-          </div>
-          <div style="font-family:var(--mono);font-size:11px;color:var(--dim);">Path score: ${score}</div>
-        </div>`;
-      }
-    }
-    if(!any)h+=`<div class="vlog-entry"><div class="vlog-empty">No sequences logged yet.</div></div>`;
-    h+=`</div>`;
-    h+=`<div class="sec"><div class="sec-lbl">Final Transmission</div><button class="btn btn-ok" onclick="showConfirmTransmit()">Transmit final outputs →</button></div>`;
+    h+=`<div class="sec"><button class="btn btn-ok" onclick="showConfirmTransmit()">Transmit final outputs →</button></div>`;
 
   } else {
     // PHASE 2
@@ -807,10 +913,12 @@ function sharedScreenHTML(){
       const v1=S.finalVerdicts[i];
       const isActive=S.p2activeTx===i;
       const v1cls=v1==='verified'?'var(--ok)':v1==='hallucination'?'var(--err)':'var(--bd2)';
-      h+=`<div class="sec">
-        <div class="sec-lbl">Transmission 0${i+1}</div>
-        <div style="background:var(--bg-inset);border:1px solid var(--bd2);border-radius:6px;padding:14px 16px;margin-bottom:10px;cursor:pointer;" onclick="setP2ActiveTx(${i})">
-          <div style="font-family:var(--mono);font-size:10px;color:var(--dim);letter-spacing:.1em;text-transform:uppercase;margin-bottom:4px;">Input ${isActive?'● Active':''}</div>
+      const dimStyle=isActive?'':'opacity:0.38;filter:grayscale(0.6);';
+      const borderStyle=isActive?'border:2px solid var(--p1);':'border:1px solid var(--bd);';
+      h+=`<div class="sec" style="${dimStyle}transition:opacity .2s,filter .2s;" onclick="setP2ActiveTx(${i})" >
+        <div class="sec-lbl" style="cursor:pointer;">Transmission 0${i+1}${isActive?' ● Active':''}</div>
+        <div style="background:var(--bg-inset);${borderStyle}border-radius:6px;padding:14px 16px;margin-bottom:10px;cursor:pointer;border-bottom:none;border-radius:6px 6px 0 0;">
+          <div style="font-family:var(--mono);font-size:10px;color:var(--dim);letter-spacing:.1em;text-transform:uppercase;margin-bottom:4px;">Input</div>
           ${symBreakdown(tx.inputSeq, INPUT_CODEX, null)}
           <div style="margin-top:10px;display:flex;align-items:center;gap:8px;">
             <span style="font-family:var(--mono);font-size:10px;color:var(--dim);letter-spacing:.08em;">RESPONSE SEED</span>
@@ -866,15 +974,10 @@ function renderP1(){
         ${[0,1,2,3,4].map(col=>{const g=sel[col];return(col<4)?(g?`<div class="path-cell">${g}</div>`:`<div class="path-empty">·</div>`)+'<div class="path-arrow">→</div>':(g?`<div class="path-cell">${g}</div>`:`<div class="path-empty">·</div>`);}).join('')}
       </div></div>`;
 
-    // Lattice
-    h+=`<div class="sec"><div class="sec-lbl">Lattice</div>
-      <div class="lattice-outer">
-        <div class="lattice-grid">
-          ${lattice.map((col,ci)=>`<div class="lattice-col"><div class="lattice-col-label">Col ${ci+1}</div>
-            ${col.map((g,ri)=>`<div class="lattice-cell${sel[ci]===g?' selected':''}" onclick="selectCell1(${txIdx},${ci},${ri})">${g}</div>`).join('')}
-          </div>`).join('')}
-        </div>
-      </div></div>`;
+    // Neural network lattice — symbols visible, no scores
+    h+=`<div class="sec"><div class="sec-lbl">Select one symbol per token</div>
+      ${renderNeuralLattice({lattice,sel,accentColor:'var(--p1)',selectFnName:'selectCell1',txIdx,p1seq:null,showSymbols:true,showScores:false,clickable:true})}
+    </div>`;
 
     h+=`<div class="sec"><div class="btn-row">
       <button class="btn btn-p1" onclick="logSequence1(${txIdx})" ${!isComplete1(txIdx)?'disabled':''}>Log output sequence</button>
@@ -926,7 +1029,7 @@ function renderP1(){
       // Panel 3: Current path + live translation (driven by P2's selections on their lattice)
       const sel=S.p2sel[0];
       h+=`<div class="sec"><div class="sec-lbl">3 — Current Path + Live Translation</div>
-        ${seqWithProbs(sel.map(g=>g||'·'), 'var(--p1)', p1seq)}
+        ${seqWithProbs(sel, 'var(--p1)', p1seq)}
         ${p1seq.length?`<div style="display:flex;gap:14px;font-size:11px;margin-top:4px;padding:0 2px;">
           <span style="display:flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;border-radius:2px;background:var(--oklt);border:1px solid var(--okbd);display:inline-block;"></span>Same as initial</span>
           <span style="display:flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;border-radius:2px;background:var(--errlt);border:1px solid var(--errbd);display:inline-block;"></span>Changed</span>
@@ -959,7 +1062,7 @@ function renderP1(){
       const p1seq2=p1ll2?p1ll2.seq:[];
 
       h+=`<div class="sec"><div class="sec-lbl">Lattice + Inline Probabilities</div>
-        ${renderLatticeWithProbs(lattice,sel,'var(--p1)','var(--p1lt)','var(--p1bd)','selectCell2',1,p1seq2)}
+        ${renderNeuralLattice({lattice,sel,accentColor:'var(--p1)',selectFnName:'selectCell2',txIdx:1,p1seq:p1seq2,showSymbols:true,showScores:false,clickable:true})}
       </div>`;
 
       h+=`<div class="sec"><div class="btn-row">
@@ -1029,51 +1132,9 @@ function renderP2(){
 
     h+=`<div class="sec"><div class="btn-row">${[0,1].map(i=>`<button class="btn${i===txIdx?' btn-p2':''}" style="margin-top:0" onclick="setActiveTx(${i})">Transmission 0${i+1}</button>`).join('')}</div></div>`;
 
-    // Placed sequence — horizontal path display
-    h+=`<div class="sec"><div class="sec-lbl">Placed Sequence</div>
-      <div class="path-preview">`;
-    for(let i=0;i<5;i++){
-      const g=sel[i];
-      if(i>0){
-        const prev=sel[i-1];
-        const score=(prev&&g)?getBigram(prev,g):null;
-        h+=`<div class="path-arrow">→</div>
-            <div style="font-family:var(--mono);font-size:11px;font-weight:600;color:var(--p2);min-width:20px;text-align:center;">${score!==null?score:'?'}</div>
-            <div class="path-arrow">→</div>`;
-      }
-      h+=g?`<div class="path-cell" style="border-color:var(--p2bd);background:var(--p2lt);color:var(--p2)">${g}</div>`
-          :`<div class="path-empty">·</div>`;
-    }
-    h+=`</div></div>`;
-
-    // Next-column probability table
-    // Find the last placed column to determine which column's options to show
-    let lastPlacedCol=-1;
-    for(let i=4;i>=0;i--){if(sel[i]!==null){lastPlacedCol=i;break;}}
-
-    const currentSym=lastPlacedCol>=0?sel[lastPlacedCol]:null;
-    const nextCol=lastPlacedCol+1;
-    const nextColSymbols=nextCol<5?lattice[nextCol]:null; // 5 symbols in next column
-
-    h+=`<div class="sec"><div class="sec-lbl">Given all prior tokens selected, probabilities for the next token are...</div>`;
-    if(currentSym===null){
-      h+=`<div style="color:var(--dim);font-size:13px;font-style:italic;padding:4px 0">—</div>`;
-    } else if(!nextColSymbols){
-      h+=`<div style="color:var(--dim);font-size:13px;font-style:italic;padding:4px 0">All columns placed.</div>`;
-    } else {
-      h+=`<div class="prob-table">
-          <div class="prob-table-header"><span>Row</span><span></span><span style="text-align:right">Probability</span></div>
-          ${nextColSymbols.map((sym,ri)=>{
-            const score=getBigram(currentSym,sym);
-            return`<div class="prob-row">
-              <div class="prob-row-num">${ri+1}</div>
-              <div class="prob-row-label"></div>
-              <div class="prob-row-score">${score}</div>
-            </div>`;
-          }).join('')}
-        </div>`;
-    }
-    h+=`</div>`;
+    h+=`<div class="sec"><div class="sec-lbl">Given all prior tokens selected, probabilities for the next token are...</div>
+      ${renderNeuralLattice({lattice,sel,accentColor:'var(--p2)',selectFnName:'selectCell1',txIdx,p1seq:null,showSymbols:false,showScores:true,clickable:false})}
+    </div>`;
 
     h+=`<div class="sec"><div class="btn-row">
       <button class="btn btn-p2" onclick="logSequence1(${txIdx})" ${!isComplete1(txIdx)?'disabled':''}>Log output sequence</button>
@@ -1114,7 +1175,7 @@ function renderP2(){
       }
 
       h+=`<div class="sec"><div class="sec-lbl">Lattice + Inline Probabilities</div>
-        ${renderLatticeWithProbs(lattice,sel,'var(--p2)','var(--p2lt)','var(--p2bd)','selectCell2',0,p1seq0)}
+        ${renderNeuralLattice({lattice,sel,accentColor:'var(--p2)',selectFnName:'selectCell2',txIdx:0,p1seq:p1seq0,showSymbols:true,showScores:false,clickable:true})}
       </div>`;
 
       h+=`<div class="sec"><div class="btn-row">
@@ -1163,7 +1224,7 @@ function renderP2(){
       // Panel 3: Current path + live translation (driven by P1's selections on their lattice)
       const sel2=S.p2sel[1];
       h+=`<div class="sec"><div class="sec-lbl">3 — Current Path + Live Translation</div>
-        ${seqWithProbs(sel2.map(g=>g||'·'), 'var(--p2)', p2seq)}
+        ${seqWithProbs(sel2, 'var(--p2)', p2seq)}
         ${p2seq.length?`<div style="display:flex;gap:14px;font-size:11px;margin-top:4px;padding:0 2px;">
           <span style="display:flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;border-radius:2px;background:var(--oklt);border:1px solid var(--okbd);display:inline-block;"></span>Same as initial</span>
           <span style="display:flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;border-radius:2px;background:var(--errlt);border:1px solid var(--errbd);display:inline-block;"></span>Changed</span>
@@ -1404,7 +1465,6 @@ function logSequence2(txIdx) {
   syncAndRender();
 }
 
-const _confirmTransmit = confirmTransmit;
 function confirmTransmit() {
   for (let i = 0; i < 2; i++) {
     const ll = lastLog1(i);
@@ -1415,7 +1475,6 @@ function confirmTransmit() {
   syncAndRender(); renderModal();
 }
 
-const _confirmTransmit2 = confirmTransmit2;
 function confirmTransmit2() {
   for (let i = 0; i < 2; i++) {
     const ll = lastLog2(i) || lastLog1(i);
