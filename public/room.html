@@ -651,15 +651,13 @@ function initView() {
 
 const ready = initView();
 if (ready) {
+  render(); // render immediately so screen is never blank
   if (location.protocol !== 'file:') {
     connectWS();
-    // After connecting, set up win watcher
-    const origConnect = connectWS;
     setTimeout(() => { if (ws) setupWinWatcher(); }, 1000);
   } else {
     updateBadge(true);
     document.getElementById('conn-label').textContent = 'LOCAL MODE';
-    render();
   }
 }
 </script>
