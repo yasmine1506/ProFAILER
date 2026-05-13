@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DEER — Room Shell</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --bg:#0c0e1a;--surface:#111428;--border:#2a3858;
+  --p1:#1a5fa8;--p1lt:#deeaf8;--p1bd:#8ab8e0;
+  --p2:#6622aa;--p2lt:#ede0f8;--p2bd:#bb99e0;
+  --ok:#147a50;--oklt:#d6f0e4;--okbd:#7acba8;
+  --err:#b81c1c;--errlt:#fde8e8;--errbd:#e8a0a0;
+  --text:#e0f0ff;--muted:#8090a8;--dim:#4a6080;
+  --mono:'IBM Plex Mono',monospace;
+  --sans:'IBM Plex Sans',system-ui,sans-serif;
+}
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15px;}
+.app{display:flex;flex-direction:column;height:100vh;}
+
+/* ── Header ── */
+.hdr{background:#0a0c18;border-bottom:1px solid var(--border);padding:8px 18px;display:flex;align-items:center;gap:12px;flex-shrink:0;}
+.hdr-title{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--text);}
+.hdr-sub{font-size:11px;color:var(--dim);margin-left:4px;}
+.conn-dot{width:7px;height:7px;border-radius:50%;background:#5bf5a8;animation:pulse 2s ease-in-out infinite;margin-left:auto;}
+.conn-label{font-family:var(--mono);font-size:10px;color:var(--muted);}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* ── Main content ── */
+.main{flex:1;overflow:hidden;display:flex;align-items:center;justify-content:center;}
+
+/* ── Video screen ── */
+.video-screen{width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#000;position:relative;}
+.video-screen video{max-width:100%;max-height:100%;object-fit:contain;}
+.video-overlay{position:absolute;bottom:24px;left:50%;transform:translateX(-50%);display:flex;gap:12px;}
+.skip-btn{background:rgba(0,0,0,.6);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.7);
+  font-family:var(--mono);font-size:12px;padding:8px 20px;border-radius:4px;cursor:pointer;
+  backdrop-filter:blur(4px);transition:all .2s;}
+.skip-btn:hover{background:rgba(255,255,255,.15);color:#fff;}
+.video-status{font-family:var(--mono);font-size:11px;color:var(--muted);text-align:center;padding:12px 0;}
+
+/* ── Role selection ── */
+.role-screen{width:100%;max-width:700px;padding:24px;}
+.role-title{font-family:var(--mono);font-size:22px;font-weight:600;color:var(--text);margin-bottom:6px;letter-spacing:.04em;}
+.role-sub{font-size:14px;color:var(--muted);margin-bottom:32px;line-height:1.7;}
+.role-cards{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px;}
+.role-card{border-radius:10px;padding:24px 20px;cursor:pointer;transition:all .2s;border:2px solid transparent;text-align:center;}
+.role-card-a1{background:#0a1828;border-color:var(--p1bd);}
+.role-card-a2{background:#130a28;border-color:var(--p2bd);}
+.role-card:hover:not(.claimed):not(.other-claimed){transform:translateY(-2px);box-shadow:0 6px 24px rgba(0,0,0,.4);}
+.role-card-a1:hover:not(.claimed):not(.other-claimed){border-color:var(--p1);}
+.role-card-a2:hover:not(.claimed):not(.other-claimed){border-color:var(--p2);}
+.role-card.claimed{opacity:1;cursor:default;}
+.role-card.other-claimed{opacity:.3;cursor:not-allowed;pointer-events:none;}
+.role-icon{font-size:42px;margin-bottom:12px;}
+.role-name{font-family:var(--mono);font-size:18px;font-weight:600;margin-bottom:6px;}
+.role-card-a1 .role-name{color:var(--p1lt);}
+.role-card-a2 .role-name{color:var(--p2lt);}
+.role-desc{font-size:13px;color:var(--muted);line-height:1.6;}
+.role-claimed-badge{display:inline-block;margin-top:12px;font-family:var(--mono);font-size:11px;
+  font-weight:600;padding:3px 10px;border-radius:3px;background:var(--oklt);color:var(--ok);border:1px solid var(--okbd);}
+.role-waiting{font-size:13px;color:var(--muted);font-style:italic;margin-top:8px;}
+.role-info{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px 18px;
+  font-size:13px;color:var(--muted);line-height:1.7;text-align:center;}
+
+/* ── Admin panel ── */
+.admin-screen{width:100%;max-width:680px;padding:24px;}
+.admin-title{font-family:var(--mono);font-size:20px;font-weight:600;color:var(--text);margin-bottom:4px;}
+.admin-sub{font-size:13px;color:var(--muted);margin-bottom:28px;}
+.admin-section{margin-bottom:24px;}
+.admin-label{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--dim);margin-bottom:10px;display:flex;align-items:center;gap:8px;}
+.admin-label::after{content:'';flex:1;height:1px;background:var(--border);}
+.puzzle-toggles{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
+.puzzle-toggle{background:var(--surface);border:1px solid var(--border);border-radius:8px;
+  padding:14px 12px;cursor:pointer;transition:all .15s;text-align:center;}
+.puzzle-toggle.on{border-color:var(--ok);background:#0a1a10;}
+.puzzle-toggle-num{font-family:var(--mono);font-size:22px;font-weight:600;
+  color:var(--muted);margin-bottom:4px;transition:color .15s;}
+.puzzle-toggle.on .puzzle-toggle-num{color:#5bf5a8;}
+.puzzle-toggle-name{font-size:12px;color:var(--dim);}
+.puzzle-toggle.on .puzzle-toggle-name{color:var(--muted);}
+.order-display{background:var(--surface);border:1px solid var(--border);border-radius:6px;
+  padding:12px 16px;font-family:var(--mono);font-size:13px;color:var(--muted);}
+.order-display span{color:var(--text);}
+.start-btn{width:100%;padding:14px;background:var(--ok);color:#fff;border:none;border-radius:8px;
+  font-family:var(--sans);font-size:15px;font-weight:600;cursor:pointer;transition:all .2s;margin-top:8px;}
+.start-btn:hover:not(:disabled){background:#0d6040;}
+.start-btn:disabled{opacity:.4;cursor:not-allowed;}
+.reset-btn{width:100%;padding:10px;background:transparent;color:var(--err);border:1px solid var(--errbd);
+  border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;margin-top:8px;transition:all .2s;}
+.reset-btn:hover{background:var(--errlt);}
+.status-row{display:flex;gap:10px;flex-wrap:wrap;}
+.status-chip{font-family:var(--mono);font-size:11px;padding:4px 10px;border-radius:3px;}
+.chip-pending{background:#1a1a2e;color:var(--muted);border:1px solid var(--border);}
+.chip-active{background:var(--oklt);color:var(--ok);border:1px solid var(--okbd);}
+.chip-done{background:#0a1a10;color:#5bf5a8;border:1px solid #2a5a30;}
+
+/* ── Waiting / transition screens ── */
+.waiting-screen{width:100%;max-width:560px;padding:24px;text-align:center;}
+.waiting-title{font-family:var(--mono);font-size:24px;font-weight:600;color:var(--text);margin-bottom:12px;}
+.waiting-sub{font-size:14px;color:var(--muted);line-height:1.8;margin-bottom:24px;}
+.waiting-spinner{font-size:32px;margin-bottom:16px;animation:spin 2s linear infinite;display:inline-block;}
+@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+.puzzle-badge{display:inline-block;font-family:var(--mono);font-size:13px;font-weight:600;
+  padding:6px 16px;border-radius:4px;background:var(--surface);border:1px solid var(--border);
+  color:var(--text);margin-bottom:16px;}
+
+/* ── Complete screen ── */
+.complete-screen{width:100%;max-width:560px;padding:24px;text-align:center;}
+.complete-icon{font-size:56px;margin-bottom:16px;}
+.complete-title{font-family:var(--mono);font-size:26px;font-weight:600;color:#5bf5a8;margin-bottom:12px;}
+.complete-sub{font-size:15px;color:var(--muted);line-height:1.8;}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="hdr">
+    <div class="hdr-title">DEER — Digital Educational Escape Room <span class="hdr-sub">Room Shell v1.0</span></div>
+    <div class="conn-dot" id="conn-dot"></div>
+    <span class="conn-label" id="conn-label">CONNECTING...</span>
+  </div>
+  <div class="main" id="main"></div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════════
+// PUZZLE METADATA
+// ══════════════════════════════════════════════════════════
+const PUZZLES = {
+  1: { name:'Puzzle 1', url:'/puzzle1', introVideo:'/videos/puzzle1-intro.mp4' },
+  2: { name:'The Xenolinguist\'s Dilemma', url:'/',      introVideo:'/videos/puzzle2-intro.mp4' },
+  3: { name:'PARTS Puzzle',                url:'/puzzle3', introVideo:'/videos/puzzle3-intro.mp4' },
+};
+const INTRO_VIDEO = '/videos/intro.mp4';
+
+// ══════════════════════════════════════════════════════════
+// ROOM STATE
+// ══════════════════════════════════════════════════════════
+/*
+  phase:
+    'idle'          — admin hasn't started yet
+    'intro-video'   — playing the main intro video
+    'role-select'   — players choose Asset 1 / Asset 2
+    'puzzle-video'  — playing a puzzle intro video
+    'puzzle'        — puzzle is active
+    'complete'      — all puzzles done
+
+  screenId: 'admin' | 'screen2' | 'screen3'
+  assignedAs: null | 'p1' | 'p2'   (set per-screen, local)
+*/
+
+const LOCAL_KEYS = new Set(['screenId','assignedAs']);
+
+function freshRoomState() {
+  return {
+    phase: 'idle',
+    puzzles: [],          // ordered list e.g. [2,3]
+    currentIdx: -1,       // index into puzzles array
+    currentPuzzle: null,  // puzzle number
+    videoSrc: null,       // current video to show
+    videoStartTime: null, // server timestamp (ms) when video started
+    asset1Screen: null,   // 'screen2' or 'screen3'
+    asset2Screen: null,
+  };
+}
+
+let R = freshRoomState();
+let screenId = null;
+let assignedAs = null; // 'p1' or 'p2' or null
+
+// ══════════════════════════════════════════════════════════
+// WEBSOCKET
+// ══════════════════════════════════════════════════════════
+let ws = null;
+let wsConnected = false;
+
+function connectWS() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(`${proto}//${location.host}`);
+
+  ws.onopen = () => {
+    wsConnected = true;
+    updateBadge(true);
+    ws.send(JSON.stringify({ type:'hello', puzzle:'room', screenId }));
+  };
+
+  ws.onmessage = (e) => {
+    let msg; try { msg = JSON.parse(e.data); } catch { return; }
+    if (msg.type === 'room-state') { applyRoomState(msg.state); }
+    if (msg.type === 'room' && msg.room?.room) { applyRoomState(msg.room.room); }
+  };
+
+  ws.onclose = () => {
+    wsConnected = false;
+    updateBadge(false);
+    setTimeout(() => connectWS(), 2000);
+  };
+  ws.onerror = () => ws.close();
+}
+
+function syncRoom() {
+  if (ws && wsConnected) {
+    ws.send(JSON.stringify({ type:'state', puzzle:'room', state: R }));
+  }
+}
+
+function applyRoomState(remote) {
+  R = { ...freshRoomState(), ...remote };
+  render();
+}
+
+function updateBadge(ok) {
+  const d = document.getElementById('conn-dot');
+  const l = document.getElementById('conn-label');
+  if (d) d.style.background = ok ? '#5bf5a8' : '#f07070';
+  if (l) l.textContent = ok ? (screenId === 'admin' ? 'ADMIN' : `SCREEN: ${screenId}`) : 'RECONNECTING...';
+}
+
+// ══════════════════════════════════════════════════════════
+// ADMIN ACTIONS (only admin screen fires these)
+// ══════════════════════════════════════════════════════════
+function adminStartSession(puzzleOrder) {
+  R = freshRoomState();
+  R.puzzles = puzzleOrder;
+  R.phase = 'intro-video';
+  R.videoSrc = INTRO_VIDEO;
+  R.videoStartTime = Date.now();
+  syncRoom();
+  render();
+}
+
+function adminReset() {
+  R = freshRoomState();
+  syncRoom();
+  render();
+}
+
+function adminAdvance() {
+  // Force-advance from any stuck state — useful if video auto-play fails
+  if (R.phase === 'intro-video') {
+    R.phase = 'role-select';
+    R.videoSrc = null;
+  } else if (R.phase === 'role-select') {
+    advanceToPuzzleVideo(0);
+  } else if (R.phase === 'puzzle-video') {
+    R.phase = 'puzzle';
+    R.videoSrc = null;
+  } else if (R.phase === 'puzzle') {
+    advanceAfterPuzzle();
+  }
+  syncRoom();
+  render();
+}
+
+function advanceToPuzzleVideo(idx) {
+  const puzzleNum = R.puzzles[idx];
+  R.currentIdx = idx;
+  R.currentPuzzle = puzzleNum;
+  R.phase = 'puzzle-video';
+  R.videoSrc = PUZZLES[puzzleNum].introVideo;
+  R.videoStartTime = Date.now();
+}
+
+function advanceAfterPuzzle() {
+  const nextIdx = R.currentIdx + 1;
+  if (nextIdx < R.puzzles.length) {
+    advanceToPuzzleVideo(nextIdx);
+  } else {
+    R.phase = 'complete';
+    R.videoSrc = null;
+  }
+}
+
+// Called when a puzzle reports completion (via WebSocket puzzle win detection)
+function onPuzzleComplete() {
+  if (R.phase !== 'puzzle') return;
+  advanceAfterPuzzle();
+  syncRoom();
+  render();
+}
+
+// ══════════════════════════════════════════════════════════
+// PLAYER ACTIONS
+// ══════════════════════════════════════════════════════════
+function claimRole(role) {
+  if (role === 'p1') {
+    if (R.asset1Screen && R.asset1Screen !== screenId) return;
+    R.asset1Screen = screenId;
+    assignedAs = 'p1';
+  } else {
+    if (R.asset2Screen && R.asset2Screen !== screenId) return;
+    R.asset2Screen = screenId;
+    assignedAs = 'p2';
+  }
+  syncRoom();
+  render();
+}
+
+// ══════════════════════════════════════════════════════════
+// VIDEO PLAYER LOGIC
+// ══════════════════════════════════════════════════════════
+let currentVideoSrc = null;
+
+function renderVideo(src, onEnd, allowSkip) {
+  const main = document.getElementById('main');
+
+  // Reuse existing video element if same src
+  if (src === currentVideoSrc) return;
+  currentVideoSrc = src;
+
+  const adminControls = screenId === 'admin'
+    ? `<div class="video-overlay">
+        ${allowSkip ? `<button class="skip-btn" onclick="adminAdvance()">Skip →</button>` : ''}
+       </div>`
+    : '';
+
+  main.innerHTML = `
+    <div class="video-screen">
+      <video id="room-video" playsinline>
+        <source src="${src}" type="video/mp4">
+      </video>
+      ${adminControls}
+      <div class="video-status" style="position:absolute;top:12px;right:16px;">
+        ${screenId === 'admin' ? '<span style="font-family:var(--mono);font-size:10px;color:rgba(255,255,255,.3);">ADMIN VIEW</span>' : ''}
+      </div>
+    </div>`;
+
+  const video = document.getElementById('room-video');
+
+  // Sync to server start time
+  if (R.videoStartTime) {
+    const elapsed = (Date.now() - R.videoStartTime) / 1000;
+    video.currentTime = Math.max(0, elapsed - 0.5); // small buffer
+  }
+
+  video.play().catch(() => {
+    // Autoplay blocked — show play prompt for admin
+    if (screenId === 'admin') {
+      const overlay = video.parentElement;
+      const btn = document.createElement('button');
+      btn.className = 'skip-btn';
+      btn.textContent = '▶ Click to play';
+      btn.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:16px;padding:14px 28px;';
+      btn.onclick = () => { video.play(); btn.remove(); };
+      overlay.appendChild(btn);
+    }
+  });
+
+  video.onended = () => {
+    currentVideoSrc = null;
+    if (onEnd) onEnd();
+  };
+}
+
+// ══════════════════════════════════════════════════════════
+// RENDER
+// ══════════════════════════════════════════════════════════
+function render() {
+  const main = document.getElementById('main');
+  if (!main) return;
+
+  // ADMIN SCREEN
+  if (screenId === 'admin') {
+    renderAdmin(main);
+    return;
+  }
+
+  // PLAYER SCREENS
+  switch (R.phase) {
+    case 'idle':
+      main.innerHTML = `
+        <div class="waiting-screen">
+          <div class="waiting-spinner">⌛</div>
+          <div class="waiting-title">Standby</div>
+          <div class="waiting-sub">Waiting for the session to begin.<br>The administrator will start shortly.</div>
+        </div>`;
+      currentVideoSrc = null;
+      break;
+
+    case 'intro-video':
+      renderVideo(R.videoSrc, null, false);
+      break;
+
+    case 'role-select':
+      renderRoleSelect(main);
+      currentVideoSrc = null;
+      break;
+
+    case 'puzzle-video':
+      renderVideo(R.videoSrc, null, false);
+      break;
+
+    case 'puzzle':
+      renderPuzzleRouting(main);
+      currentVideoSrc = null;
+      break;
+
+    case 'complete':
+      main.innerHTML = `
+        <div class="complete-screen">
+          <div class="complete-icon">🔓</div>
+          <div class="complete-title">Access Granted</div>
+          <div class="complete-sub">All transmissions verified. The room is complete.</div>
+        </div>`;
+      currentVideoSrc = null;
+      break;
+
+    default:
+      main.innerHTML = `<div class="waiting-screen"><div class="waiting-sub">Unknown state: ${R.phase}</div></div>`;
+  }
+}
+
+function renderRoleSelect(main) {
+  const myRole = R.asset1Screen === screenId ? 'p1' : R.asset2Screen === screenId ? 'p2' : null;
+  assignedAs = myRole;
+  const bothClaimed = R.asset1Screen && R.asset2Screen;
+
+  if (bothClaimed && myRole) {
+    // Both chosen — waiting for admin to advance or auto-advance
+    const isA1 = myRole === 'p1';
+    main.innerHTML = `
+      <div class="waiting-screen">
+        <div style="font-size:48px;margin-bottom:16px;">${isA1 ? '🕵️' : '🕵️‍♀️'}</div>
+        <div class="puzzle-badge">You are Asset ${isA1?'1':'2'}</div>
+        <div class="waiting-title">${isA1 ? 'Asset 1' : 'Asset 2'}</div>
+        <div class="waiting-sub">Role confirmed. Briefing incoming...</div>
+      </div>`;
+    return;
+  }
+
+  main.innerHTML = `
+    <div class="role-screen">
+      <div class="role-title">Agent Identification</div>
+      <div class="role-sub">You have intercepted a classified transmission from XENOX-7.<br>
+        Before proceeding, each agent must identify themselves.</div>
+      <div class="role-cards">
+        <div class="role-card role-card-a1${R.asset1Screen && R.asset1Screen !== screenId ? ' other-claimed' : R.asset1Screen === screenId ? ' claimed' : ''}"
+          onclick="claimRole('p1')">
+          <div class="role-icon">🕵️</div>
+          <div class="role-name">Asset 1</div>
+          <div class="role-desc">Operates the transmission lattice and constructs response sequences.</div>
+          ${R.asset1Screen === screenId ? '<div class="role-claimed-badge">✓ This is you</div>' :
+            R.asset1Screen ? '<div class="role-waiting">Claimed by another agent</div>' : ''}
+        </div>
+        <div class="role-card role-card-a2${R.asset2Screen && R.asset2Screen !== screenId ? ' other-claimed' : R.asset2Screen === screenId ? ' claimed' : ''}"
+          onclick="claimRole('p2')">
+          <div class="role-icon">🕵️‍♀️</div>
+          <div class="role-name">Asset 2</div>
+          <div class="role-desc">Monitors probability scores and guides the path selection.</div>
+          ${R.asset2Screen === screenId ? '<div class="role-claimed-badge">✓ This is you</div>' :
+            R.asset2Screen ? '<div class="role-waiting">Claimed by another agent</div>' : ''}
+        </div>
+      </div>
+      ${!myRole ? '<div class="role-info">Select your role above to continue.</div>' :
+        !bothClaimed ? '<div class="role-info">Waiting for the other agent to identify themselves...</div>' : ''}
+    </div>`;
+}
+
+function renderPuzzleRouting(main) {
+  const puzzleNum = R.currentPuzzle;
+  const puzzle = PUZZLES[puzzleNum];
+  const myRole = R.asset1Screen === screenId ? 'p1' : R.asset2Screen === screenId ? 'p2' : null;
+
+  if (!myRole) {
+    main.innerHTML = `<div class="waiting-screen">
+      <div class="waiting-sub">Role not assigned. Please reload and select your role.</div>
+    </div>`;
+    return;
+  }
+
+  const puzzleUrl = `${puzzle.url}#${myRole}`;
+  main.innerHTML = `
+    <div class="waiting-screen">
+      <div class="puzzle-badge">${puzzle.name}</div>
+      <div class="waiting-title">Loading puzzle...</div>
+      <div class="waiting-sub">Redirecting you to your workstation as Asset ${myRole === 'p1' ? '1' : '2'}.</div>
+    </div>`;
+
+  // Redirect after a brief moment
+  setTimeout(() => { window.location.href = puzzleUrl; }, 1200);
+}
+
+function renderAdmin(main) {
+  if (R.phase === 'idle') {
+    // Puzzle selection UI
+    const allPuzzles = [1, 2, 3];
+    const selected = R.puzzles.length ? R.puzzles : [];
+    const orderStr = selected.length
+      ? selected.map(p => `Puzzle ${p}`).join(' → ')
+      : 'None selected';
+
+    main.innerHTML = `
+      <div class="admin-screen">
+        <div class="admin-title">Session Setup</div>
+        <div class="admin-sub">Configure and launch the escape room session.</div>
+
+        <div class="admin-section">
+          <div class="admin-label">Select puzzles for this session</div>
+          <div class="puzzle-toggles">
+            ${allPuzzles.map(n => `
+              <div class="puzzle-toggle${selected.includes(n) ? ' on' : ''}" id="ptog-${n}" onclick="togglePuzzle(${n})">
+                <div class="puzzle-toggle-num">${n}</div>
+                <div class="puzzle-toggle-name">${PUZZLES[n].name}</div>
+              </div>`).join('')}
+          </div>
+        </div>
+
+        <div class="admin-section">
+          <div class="admin-label">Session order</div>
+          <div class="order-display">
+            ${selected.length ? selected.map(n=>`<span>Puzzle ${n}</span>`).join(' → ') : '<span style="color:var(--dim)">Select at least one puzzle</span>'}
+          </div>
+        </div>
+
+        <button class="start-btn" onclick="confirmStart()" ${selected.length ? '' : 'disabled'}>
+          ▶ Start Session
+        </button>
+      </div>`;
+    currentVideoSrc = null;
+  } else {
+    // Session in progress — admin control panel
+    const phase = R.phase;
+    const puzzleNum = R.currentPuzzle;
+    const puzzle = puzzleNum ? PUZZLES[puzzleNum] : null;
+
+    // Render video if applicable
+    if ((phase === 'intro-video' || phase === 'puzzle-video') && R.videoSrc) {
+      renderVideo(R.videoSrc, () => {
+        if (phase === 'intro-video') { R.phase = 'role-select'; R.videoSrc = null; syncRoom(); render(); }
+        else if (phase === 'puzzle-video') { R.phase = 'puzzle'; R.videoSrc = null; syncRoom(); render(); }
+      }, true);
+    } else {
+      main.innerHTML = `
+        <div class="admin-screen">
+          <div class="admin-title">Session Active</div>
+          <div class="admin-sub">Monitor and control the session from here.</div>
+
+          <div class="admin-section">
+            <div class="admin-label">Current state</div>
+            <div class="status-row">
+              <span class="status-chip ${phase === 'idle' ? 'chip-pending' : 'chip-done'}">Phase: ${phase}</span>
+              ${puzzleNum ? `<span class="status-chip chip-active">Puzzle: ${puzzleNum}</span>` : ''}
+              <span class="status-chip ${R.asset1Screen ? 'chip-done' : 'chip-pending'}">Asset 1: ${R.asset1Screen || 'unassigned'}</span>
+              <span class="status-chip ${R.asset2Screen ? 'chip-done' : 'chip-pending'}">Asset 2: ${R.asset2Screen || 'unassigned'}</span>
+            </div>
+          </div>
+
+          <div class="admin-section">
+            <div class="admin-label">Puzzle order</div>
+            <div class="order-display">
+              ${R.puzzles.map((n,i) => `<span style="color:${i===R.currentIdx?'#5bf5a8':i<R.currentIdx?'var(--dim)':'var(--muted)'}">
+                ${i<R.currentIdx?'✓ ':''}Puzzle ${n}
+              </span>`).join(' → ')}
+            </div>
+          </div>
+
+          <div class="admin-section">
+            <div class="admin-label">Controls</div>
+            <button class="start-btn" onclick="adminAdvance()">⏭ Force advance</button>
+            <button class="reset-btn" onclick="adminReset()">↺ Reset session</button>
+          </div>
+        </div>`;
+      currentVideoSrc = null;
+    }
+  }
+}
+
+// Admin puzzle toggle
+const selectedPuzzles = [];
+function togglePuzzle(n) {
+  const idx = selectedPuzzles.indexOf(n);
+  if (idx >= 0) selectedPuzzles.splice(idx, 1);
+  else selectedPuzzles.push(n);
+  selectedPuzzles.sort((a,b) => a-b); // keep in order
+  R.puzzles = [...selectedPuzzles];
+  render();
+}
+
+function confirmStart() {
+  if (!R.puzzles.length) return;
+  adminStartSession([...R.puzzles]);
+}
+
+// ══════════════════════════════════════════════════════════
+// PUZZLE WIN DETECTION
+// The room shell watches puzzle states for win conditions
+// and advances the room when they fire.
+// ══════════════════════════════════════════════════════════
+function checkPuzzleWin(puzzleSlot, puzzleState) {
+  if (R.phase !== 'puzzle') return;
+  if (R.currentPuzzle !== puzzleSlot) return;
+
+  let won = false;
+  if (puzzleSlot === 1) won = puzzleState.phase2Complete === true;
+  if (puzzleSlot === 2) won = puzzleState.p2result === 'win';
+  if (puzzleSlot === 3) {
+    const a = puzzleState.p2Attempts;
+    won = puzzleState.p2done === true && a && a[0]?.results &&
+          Object.values(a[0].results).every(Boolean);
+  }
+
+  if (won) onPuzzleComplete();
+}
+
+// Override ws.onmessage to also watch puzzle states
+function setupWinWatcher() {
+  const origOnMessage = ws.onmessage;
+  ws.onmessage = (e) => {
+    let msg; try { msg = JSON.parse(e.data); } catch { return; }
+    if (msg.type === 'state' && msg.puzzle && msg.puzzle !== 'room') {
+      const slot = parseInt(msg.puzzle.replace('p',''));
+      if (!isNaN(slot) && screenId === 'admin') {
+        checkPuzzleWin(slot, msg.state);
+      }
+    }
+    if (msg.type === 'room-state') { applyRoomState(msg.state); }
+    if (msg.type === 'room' && msg.room?.room) { applyRoomState(msg.room.room); }
+  };
+}
+
+// ══════════════════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════════════════
+function initView() {
+  const hash = window.location.hash.replace('#','').toLowerCase();
+  if (hash === 'admin') {
+    screenId = 'admin';
+  } else if (hash === 'screen2') {
+    screenId = 'screen2';
+  } else if (hash === 'screen3') {
+    screenId = 'screen3';
+  } else {
+    // No hash — show a selector
+    document.getElementById('main').innerHTML = `
+      <div class="waiting-screen">
+        <div class="waiting-title">Select your screen</div>
+        <div class="waiting-sub" style="margin-bottom:20px;">Open this URL with the correct hash:</div>
+        <div style="font-family:var(--mono);font-size:13px;color:var(--muted);line-height:2.2;">
+          <div><a href="#admin" style="color:#5bf5a8;" onclick="location.reload()">#admin</a> — Session control (facilitator)</div>
+          <div><a href="#screen2" style="color:var(--p1lt);" onclick="location.reload()">#screen2</a> — Player screen 1</div>
+          <div><a href="#screen3" style="color:var(--p2lt);" onclick="location.reload()">#screen3</a> — Player screen 2</div>
+        </div>
+      </div>`;
+    return false;
+  }
+  return true;
+}
+
+const ready = initView();
+if (ready) {
+  if (location.protocol !== 'file:') {
+    connectWS();
+    // After connecting, set up win watcher
+    const origConnect = connectWS;
+    setTimeout(() => { if (ws) setupWinWatcher(); }, 1000);
+  } else {
+    updateBadge(true);
+    document.getElementById('conn-label').textContent = 'LOCAL MODE';
+    render();
+  }
+}
+</script>
+</body>
+</html>
