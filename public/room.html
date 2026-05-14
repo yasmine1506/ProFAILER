@@ -212,7 +212,6 @@ function applyRoomState(remote) {
   render();
 }
 
-// Also check win condition whenever ANY puzzle state comes in
 function checkPuzzleWin(puzzleSlot, puzzleState) {
   if (R.phase !== 'puzzle') return;
   if (R.currentPuzzle !== puzzleSlot) return;
@@ -226,7 +225,22 @@ function checkPuzzleWin(puzzleSlot, puzzleState) {
           Object.values(a[0].results).every(Boolean);
   }
 
-  if (won) onPuzzleComplete();
+  if (!won) return;
+
+  if (puzzleSlot === 2) {
+    // Puzzle 2 has a narrative win modal players need to read.
+    // Advancement is player-driven — they click "Continue" inside the iframe,
+    // which posts a message to this parent frame. Listen for it once.
+    const handler = (e) => {
+      if (e.data === 'puzzle2-complete') {
+        window.removeEventListener('message', handler);
+        if (R.phase === 'puzzle' && R.currentPuzzle === 2) onPuzzleComplete();
+      }
+    };
+    window.addEventListener('message', handler);
+  } else {
+    onPuzzleComplete();
+  }
 }
 
 function updateBadge(ok) {
@@ -418,9 +432,9 @@ function render() {
     case 'complete':
       main.innerHTML = `
         <div class="complete-screen">
-          <div class="complete-icon">🔓</div>
-          <div class="complete-title">Access Granted</div>
-          <div class="complete-sub">All transmissions verified. The room is complete.</div>
+          <div class="complete-icon">✅</div>
+          <div class="complete-title">Missions Successfully Completed</div>
+          <div class="complete-sub">All objectives achieved. Well done, agents.</div>
         </div>`;
       currentVideoSrc = null;
       break;

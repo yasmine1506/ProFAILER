@@ -590,8 +590,16 @@ function syncableState() {
 }
 
 function applyRemoteState(remote) {
+  const wasWon = S.p2done && S.p2Attempts[0]?.results &&
+    Object.values(S.p2Attempts[0].results).every(Boolean);
   for (const k of Object.keys(remote)) {
     if (!LOCAL_KEYS.has(k)) S[k] = remote[k];
+  }
+  const isWon = S.p2done && S.p2Attempts[0]?.results &&
+    Object.values(S.p2Attempts[0].results).every(Boolean);
+  // If win condition just became true on this screen, show the local modal
+  if (!wasWon && isWon && !S.showModal) {
+    showModal('🎉 Correct!', 'You identified all PARTS settings perfectly!', true, null);
   }
   renderAll();
 }
