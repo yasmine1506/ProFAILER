@@ -212,6 +212,23 @@ function applyRoomState(remote) {
   render();
 }
 
+// Also check win condition whenever ANY puzzle state comes in
+function checkPuzzleWin(puzzleSlot, puzzleState) {
+  if (R.phase !== 'puzzle') return;
+  if (R.currentPuzzle !== puzzleSlot) return;
+
+  let won = false;
+  if (puzzleSlot === 1) won = puzzleState.phase2Complete === true;
+  if (puzzleSlot === 2) won = puzzleState.p2result === 'win';
+  if (puzzleSlot === 3) {
+    const a = puzzleState.p2Attempts;
+    won = puzzleState.p2done === true && a && a[0]?.results &&
+          Object.values(a[0].results).every(Boolean);
+  }
+
+  if (won) onPuzzleComplete();
+}
+
 function updateBadge(ok) {
   const d = document.getElementById('conn-dot');
   const l = document.getElementById('conn-label');
@@ -419,13 +436,10 @@ function renderRoleSelect(main) {
   const bothClaimed = R.asset1Screen && R.asset2Screen;
 
   if (bothClaimed && myRole) {
-    // Both chosen — waiting for admin to advance or auto-advance
-    const isA1 = myRole === 'p1';
     main.innerHTML = `
       <div class="waiting-screen">
-        <div style="font-size:48px;margin-bottom:16px;">${isA1 ? '🕵️' : '🕵️‍♀️'}</div>
-        <div class="puzzle-badge">You are Asset ${isA1?'1':'2'}</div>
-        <div class="waiting-title">${isA1 ? 'Asset 1' : 'Asset 2'}</div>
+        <div style="font-size:48px;margin-bottom:16px;">${myRole === 'p1' ? '🕵️' : '🕵️‍♀️'}</div>
+        <div class="puzzle-badge">You are Asset ${myRole === 'p1' ? '1' : '2'}</div>
         <div class="waiting-sub">Role confirmed. Briefing incoming...</div>
       </div>`;
     return;
@@ -434,28 +448,25 @@ function renderRoleSelect(main) {
   main.innerHTML = `
     <div class="role-screen">
       <div class="role-title">Agent Identification</div>
-      <div class="role-sub">You have intercepted a classified transmission from XENOX-7.<br>
-        Before proceeding, each agent must identify themselves.</div>
+      <div class="role-sub">Before proceeding, each agent must identify themselves.</div>
       <div class="role-cards">
         <div class="role-card role-card-a1${R.asset1Screen && R.asset1Screen !== screenId ? ' other-claimed' : R.asset1Screen === screenId ? ' claimed' : ''}"
           onclick="claimRole('p1')">
           <div class="role-icon">🕵️</div>
           <div class="role-name">Asset 1</div>
-          <div class="role-desc">Operates the transmission lattice and constructs response sequences.</div>
           ${R.asset1Screen === screenId ? '<div class="role-claimed-badge">✓ This is you</div>' :
-            R.asset1Screen ? '<div class="role-waiting">Claimed by another agent</div>' : ''}
+            R.asset1Screen ? '<div class="role-waiting">Claimed</div>' : ''}
         </div>
         <div class="role-card role-card-a2${R.asset2Screen && R.asset2Screen !== screenId ? ' other-claimed' : R.asset2Screen === screenId ? ' claimed' : ''}"
           onclick="claimRole('p2')">
           <div class="role-icon">🕵️‍♀️</div>
           <div class="role-name">Asset 2</div>
-          <div class="role-desc">Monitors probability scores and guides the path selection.</div>
           ${R.asset2Screen === screenId ? '<div class="role-claimed-badge">✓ This is you</div>' :
-            R.asset2Screen ? '<div class="role-waiting">Claimed by another agent</div>' : ''}
+            R.asset2Screen ? '<div class="role-waiting">Claimed</div>' : ''}
         </div>
       </div>
       ${!myRole ? '<div class="role-info">Select your role above to continue.</div>' :
-        !bothClaimed ? '<div class="role-info">Waiting for the other agent to identify themselves...</div>' : ''}
+        !bothClaimed ? '<div class="role-info">Waiting for the other agent...</div>' : ''}
     </div>`;
 }
 
@@ -472,20 +483,18 @@ function renderPuzzleRouting(main) {
   }
 
   const puzzleUrl = `${puzzle.url}#${myRole}`;
-  main.innerHTML = `
-    <div class="waiting-screen">
-      <div class="puzzle-badge">${puzzle.name}</div>
-      <div class="waiting-title">Loading puzzle...</div>
-      <div class="waiting-sub">Redirecting you to your workstation as Asset ${myRole === 'p1' ? '1' : '2'}.</div>
-    </div>`;
 
-  // Redirect after a brief moment
-  setTimeout(() => { window.location.href = puzzleUrl; }, 1200);
+  // Use an iframe so the player stays on room.html and keeps the WebSocket alive.
+  // This means the admin's Force Advance will always reach all screens.
+  main.innerHTML = `<iframe src="${puzzleUrl}"
+    style="width:100%;height:100%;border:none;display:block;"
+    allow="autoplay"
+    id="puzzle-frame">
+  </iframe>`;
 }
 
 function renderAdmin(main) {
-  if (R.phase === 'idle') {
-    // Puzzle selection UI
+  if (R.phase === 'idle') {    // Puzzle selection UI
     const allPuzzles = [1, 2, 3];
     const selected = R.puzzles.length ? R.puzzles : [];
     const orderStr = selected.length
@@ -521,18 +530,18 @@ function renderAdmin(main) {
       </div>`;
     currentVideoSrc = null;
   } else {
-    // Session in progress — admin control panel
+    // Session in progress — admin always shows control panel (videos play on player screens)
     const phase = R.phase;
     const puzzleNum = R.currentPuzzle;
-    const puzzle = puzzleNum ? PUZZLES[puzzleNum] : null;
 
-    // Render video if applicable
+    // Admin shows video too (with skip button), but control panel is always visible
     if ((phase === 'intro-video' || phase === 'puzzle-video') && R.videoSrc) {
       renderVideo(R.videoSrc, () => {
         if (phase === 'intro-video') { R.phase = 'role-select'; R.videoSrc = null; syncRoom(); render(); }
         else if (phase === 'puzzle-video') { R.phase = 'puzzle'; R.videoSrc = null; syncRoom(); render(); }
       }, true);
     } else {
+      currentVideoSrc = null;
       main.innerHTML = `
         <div class="admin-screen">
           <div class="admin-title">Session Active</div>
@@ -563,7 +572,6 @@ function renderAdmin(main) {
             <button class="reset-btn" onclick="adminReset()">↺ Reset session</button>
           </div>
         </div>`;
-      currentVideoSrc = null;
     }
   }
 }
@@ -584,38 +592,20 @@ function confirmStart() {
   adminStartSession([...R.puzzles]);
 }
 
-// ══════════════════════════════════════════════════════════
-// PUZZLE WIN DETECTION
-// The room shell watches puzzle states for win conditions
-// and advances the room when they fire.
-// ══════════════════════════════════════════════════════════
-function checkPuzzleWin(puzzleSlot, puzzleState) {
-  if (R.phase !== 'puzzle') return;
-  if (R.currentPuzzle !== puzzleSlot) return;
-
-  let won = false;
-  if (puzzleSlot === 1) won = puzzleState.phase2Complete === true;
-  if (puzzleSlot === 2) won = puzzleState.p2result === 'win';
-  if (puzzleSlot === 3) {
-    const a = puzzleState.p2Attempts;
-    won = puzzleState.p2done === true && a && a[0]?.results &&
-          Object.values(a[0].results).every(Boolean);
-  }
-
-  if (won) onPuzzleComplete();
-}
-
-// Override ws.onmessage to also watch puzzle states
+// Override ws.onmessage to also watch puzzle states for win conditions
+// Runs on all screens so any screen can detect completion
 function setupWinWatcher() {
-  const origOnMessage = ws.onmessage;
+  const prevOnMessage = ws.onmessage;
   ws.onmessage = (e) => {
     let msg; try { msg = JSON.parse(e.data); } catch { return; }
+
+    // Watch puzzle state changes for win conditions
     if (msg.type === 'state' && msg.puzzle && msg.puzzle !== 'room') {
       const slot = parseInt(msg.puzzle.replace('p',''));
-      if (!isNaN(slot) && screenId === 'admin') {
-        checkPuzzleWin(slot, msg.state);
-      }
+      if (!isNaN(slot)) checkPuzzleWin(slot, msg.state);
     }
+
+    // Handle room state updates
     if (msg.type === 'room-state') { applyRoomState(msg.state); }
     if (msg.type === 'room' && msg.room?.room) { applyRoomState(msg.room.room); }
   };
@@ -651,10 +641,11 @@ function initView() {
 
 const ready = initView();
 if (ready) {
-  render(); // render immediately so screen is never blank
+  render();
   if (location.protocol !== 'file:') {
     connectWS();
-    setTimeout(() => { if (ws) setupWinWatcher(); }, 1000);
+    // Set up win watcher on all screens after connection established
+    setTimeout(() => { if (ws) setupWinWatcher(); }, 800);
   } else {
     updateBadge(true);
     document.getElementById('conn-label').textContent = 'LOCAL MODE';
