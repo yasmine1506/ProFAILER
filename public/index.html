@@ -513,8 +513,6 @@ function showConfirmTransmit(){
   if(!lastLog1(0))missing.push('Transmission 01');
   if(!lastLog1(1))missing.push('Transmission 02');
   if(missing.length){
-    S.showLogModal=null;S.showConfirm=false;S.showNotesModal=false;
-    // Reuse modal system for the error
     const root=document.getElementById('modal-root');
     root.innerHTML=`<div class="modal-overlay" onclick="if(event.target===this)this.innerHTML=''">
       <div class="modal-box">
@@ -528,7 +526,8 @@ function showConfirmTransmit(){
     </div>`;
     return;
   }
-  S.showConfirm=true;renderModal();
+  // No confirm dialog — transmit immediately
+  confirmTransmit();
 }
 
 function resetGame(){S=freshState();renderModal();renderAll();}
@@ -616,15 +615,23 @@ function renderModal(){
     const logs1=[...S.p1logs[txIdx]].reverse();
     const logs2=[...S.p2logs[txIdx]].reverse();
     const showProbs=(who==='p2'&&phase===1)||(who==='p1'&&phase===2)||(who==='p2'&&phase===2&&txIdx===0);
-    const renderEntry=(e)=>`<div class="log-entry">
-      <div class="log-e-hdr">
-        <span>Attempt ${e.n}</span>
-        ${stHtml(e.verdict)}
-        ${e.count>1?`<span style="font-family:var(--mono);font-size:9px;background:var(--warnlt);color:var(--warn);border:1px solid var(--warnbd);padding:1px 6px;border-radius:3px;">×${e.count}</span>`:''}
-      </div>
-      <div class="log-e-seq">${e.seq.join(' ')}</div>
-      ${showProbs?`<div class="log-e-prob">${e.probs.map((p,pi)=>`${e.seq[pi]}→${e.seq[pi+1]}: ${p}`).join(' | ')}</div>`:''}
-    </div>`;
+    const renderEntry=(e)=>{
+      const score=pathScore(e.seq);
+      const maxScore=greedyScore(txIdx);
+      const isHighest=score>=maxScore;
+      const scoreBadge=isHighest
+        ?`<span style="font-family:var(--mono);font-size:9px;font-weight:600;padding:1px 7px;border-radius:3px;background:var(--oklt);border:1px solid var(--okbd);color:var(--ok);">Highest probability</span>`
+        :`<span style="font-family:var(--mono);font-size:9px;font-weight:600;padding:1px 7px;border-radius:3px;background:var(--errlt);border:1px solid var(--errbd);color:var(--err);">Score: ${score}</span>`;
+      return`<div class="log-entry">
+        <div class="log-e-hdr">
+          <span>Attempt ${e.n}</span>
+          ${scoreBadge}
+          ${e.count>1?`<span style="font-family:var(--mono);font-size:9px;background:var(--warnlt);color:var(--warn);border:1px solid var(--warnbd);padding:1px 6px;border-radius:3px;">×${e.count}</span>`:''}
+        </div>
+        <div class="log-e-seq">${e.seq.join(' ')}</div>
+        ${showProbs?`<div class="log-e-prob">${e.probs.map((p,pi)=>`${e.seq[pi]}→${e.seq[pi+1]}: ${p}`).join(' | ')}</div>`:''}
+      </div>`;
+    };
     inner=`<button class="modal-close" onclick="closeModal()">✕</button>
       <div class="modal-title">Output Sequences Log — Transmission 0${txIdx+1}</div>`;
     if(logs2.length>0){
@@ -818,8 +825,8 @@ function sharedScreenHTML(){
       const maxScore=greedyScore(i);
       const isHighest=score!==null&&score>=maxScore;
       const justLogged=S.lastLogged&&S.lastLogged.txIdx===i&&Date.now()-S.lastLogged.time<2000;
+      const locked=i===1&&!lastLog1(0);
 
-      // Score / verdict badge for output
       let scoreBadge='';
       if(ll){
         if(isHighest){
@@ -836,41 +843,32 @@ function sharedScreenHTML(){
         }
       }
 
-      // Greyed out style when not active
-      const dimStyle=isActive?'':'opacity:0.38;filter:grayscale(0.6);';
-      const borderStyle=isActive?'border:2px solid var(--p1);':'border:1px solid var(--bd);';
-
-      h+=`<div onclick="setActiveTx(${i})" style="border-radius:6px;margin-bottom:10px;overflow:hidden;cursor:pointer;
-        ${borderStyle}${dimStyle}transition:opacity .2s,filter .2s;
-        ${justLogged?'outline:2px solid var(--ok);':''} ">
-
-        <!-- Input strip -->
-        <div style="background:var(--bg-inset);padding:9px 12px;border-bottom:1px solid var(--bd);
-          display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-          <span style="font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.1em;
-            color:${isActive?'var(--p1)':'var(--dim)'};text-transform:uppercase;">
-            TX-0${i+1} INPUT</span>
-          <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;">
-            ${tx.inputSeq.map((sym,si)=>`<span class="tx-sym">${sym}</span>${si<tx.inputSeq.length-1?'<span class="tx-arrow">→</span>':''}`).join('')}
+      h+=`<div style="margin-bottom:12px;">
+        <button onclick="${locked?'':` setActiveTx(${i})`}" style="width:100%;padding:11px 14px;border-radius:6px;font-size:14px;font-weight:600;
+          border:2px solid ${isActive?'var(--p1)':locked?'var(--bd)':'var(--bd2)'};
+          background:${isActive?'var(--p1lt)':locked?'var(--bg-inset)':'#fff'};
+          color:${isActive?'var(--p1)':locked?'var(--dim)':'var(--mu)'};
+          cursor:${locked?'not-allowed':'pointer'};
+          text-align:left;display:flex;align-items:center;justify-content:space-between;
+          transition:all .15s;margin-bottom:6px;" ${locked?'disabled':''}>
+          <span>${isActive?'▶ ':''} Respond to Transmission ${i+1}</span>
+          ${locked?`<span style="font-size:11px;font-family:var(--mono);">🔒 Log TX-01 output first</span>`
+            :ll?`<span style="font-size:11px;font-family:var(--mono);color:var(--dim);">Output logged ✓</span>`:''}
+        </button>
+        <div style="background:var(--bg-inset);border:1px solid var(--bd);border-radius:5px;padding:8px 12px;
+          display:flex;align-items:center;gap:8px;flex-wrap:wrap;opacity:${locked?'0.4':'1'};">
+          <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;flex:1;">
+            ${tx.inputSeq.map((sym,si)=>`<span class="tx-sym" style="font-size:14px;">${sym}</span>${si<tx.inputSeq.length-1?'<span class="tx-arrow">→</span>':''}`).join('')}
+            <span style="margin-left:6px;font-family:var(--mono);font-size:10px;color:var(--dim);">SEED</span>
+            <span class="tx-sym seed" style="font-size:14px;">${tx.seed}</span>
           </div>
-          <div style="display:flex;align-items:center;gap:6px;margin-left:auto;">
-            <span style="font-family:var(--mono);font-size:10px;color:var(--dim);letter-spacing:.06em;">SEED</span>
-            <span class="tx-sym seed">${tx.seed}</span>
+          <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;">
+            ${ll
+              ?`<span style="font-family:var(--mono);font-size:13px;letter-spacing:2px;">${ll.seq.join(' ')}</span>${scoreBadge}`
+              :`<span style="font-size:12px;color:var(--dim);font-style:italic;">No output yet</span>`}
           </div>
         </div>
-
-        <!-- Output strip -->
-        <div style="background:#fff;padding:9px 12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-height:40px;">
-          <span style="font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.1em;
-            color:${isActive?'var(--p1)':'var(--dim)'};text-transform:uppercase;">
-            TX-0${i+1} OUTPUT</span>
-          ${ll
-            ?`<span style="font-family:var(--mono);font-size:14px;letter-spacing:3px;">${ll.seq.join(' ')}</span>
-               <div style="display:flex;gap:4px;flex-wrap:wrap;margin-left:auto;">${scoreBadge}</div>`
-            :`<span style="font-size:12px;color:var(--dim);font-style:italic;">No sequence logged yet</span>`
-          }
-        </div>
-
+        ${justLogged?`<div style="background:var(--oklt);border:1px solid var(--okbd);border-radius:4px;padding:4px 10px;margin-top:4px;font-size:12px;color:var(--ok);font-weight:600;">✓ Output just logged</div>`:''}
       </div>`;
     });
     h+=`</div>`;
@@ -969,8 +967,18 @@ function renderP1(){
     const lattice=LATTICES[txIdx];
     const sel=S.p1sel[txIdx];
 
-    // TX tabs
-    h+=`<div class="sec"><div class="btn-row">${[0,1].map(i=>`<button class="btn${i===txIdx?' btn-p1':''}" style="margin-top:0" onclick="setActiveTx(${i})">Transmission 0${i+1}</button>`).join('')}</div></div>`;
+    // Title showing which transmission is active + input display
+    const tx1=TRANSMISSIONS[txIdx];
+    h+=`<div class="sec">
+      <div style="font-family:var(--mono);font-size:13px;font-weight:600;color:var(--p1);letter-spacing:.04em;margin-bottom:8px;">
+        Working on Transmission ${txIdx+1}
+      </div>
+      <div style="background:var(--bg-inset);border:1px solid var(--p1bd);border-radius:5px;padding:8px 12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        ${tx1.inputSeq.map((sym,si)=>`<span class="tx-sym" style="font-size:15px;">${sym}</span>${si<tx1.inputSeq.length-1?'<span class="tx-arrow">→</span>':''}`).join('')}
+        <span style="margin-left:6px;font-family:var(--mono);font-size:10px;color:var(--dim);">SEED</span>
+        <span class="tx-sym seed" style="font-size:15px;">${tx1.seed}</span>
+      </div>
+    </div>`;
 
     // Path preview
     h+=`<div class="sec"><div class="sec-lbl">Current Path</div>
@@ -995,7 +1003,6 @@ function renderP1(){
 
     if(txIdx===0){
       // TX1 Phase 2: P1 sees three panels — input, initial output with probs, live translation
-      // P2 controls the TX1 lattice; P1 reads translations as symbols appear
 
       h+=`<div class="sec">
         <div style="background:#110a08;border:1px solid #6a3010;border-radius:6px;padding:14px 18px;">
@@ -1007,30 +1014,57 @@ function renderP1(){
         </div>
       </div>`;
 
-      h+=`<div class="sec"><div class="btn-row">${[0,1].map(i=>`<button class="btn${i===txIdx?' btn-p1':''}" style="margin-top:0" onclick="setP2ActiveTx(${i})">Transmission 0${i+1}</button>`).join('')}</div></div>`;
+      // Working on title (replaces TX toggle buttons)
+      h+=`<div class="sec">
+        <div style="font-family:var(--mono);font-size:13px;font-weight:600;color:var(--p1);letter-spacing:.04em;">
+          Working on Transmission 1
+        </div>
+      </div>`;
 
       const tx=TRANSMISSIONS[0];
 
-      // Panel 1: Input transmission + English translation
+      // Panel 1: Input transmission with signposted symbol form and English translation
       h+=`<div class="sec"><div class="sec-lbl">1 — Input Transmission</div>
-        <div style="background:var(--bg-inset);border:1px solid var(--bd2);border-radius:6px;padding:12px 16px;">
-          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px;">
-            ${tx.inputSeq.map((s,si)=>`<span style="font-family:var(--mono);font-size:20px;">${s}</span>${si<tx.inputSeq.length-1?'<span style="color:var(--dim)">→</span>':''}`).join('')}
+        <div style="background:var(--bg-inset);border:1px solid var(--bd2);border-radius:6px;padding:12px 16px;display:flex;flex-direction:column;gap:10px;">
+          <div>
+            <div style="font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin-bottom:5px;">In symbol form</div>
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+              ${tx.inputSeq.map((s,si)=>`<span style="font-family:var(--mono);font-size:20px;">${s}</span>${si<tx.inputSeq.length-1?'<span style="color:var(--dim)">→</span>':''}`).join('')}
+            </div>
           </div>
-          <div style="font-size:14px;color:var(--tx);font-weight:500;">"${inputSeqToEnglish(tx)}"</div>
+          <div>
+            <div style="font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin-bottom:5px;">Translation in English</div>
+            <div style="font-size:14px;color:var(--tx);font-weight:500;">"${inputSeqToEnglish(tx)}"</div>
+          </div>
         </div></div>`;
 
-      // Panel 2: Initial output + English + probabilities
+      // Panel 2: Initial output with signposted score and verdict
       const p1ll=lastLog1(0);
       const p1seq=p1ll?p1ll.seq:[];
-      h+=`<div class="sec"><div class="sec-lbl">2 — Initial Output + Probabilities</div>
+      const p1score=p1ll?pathScore(p1ll.seq):null;
+      const p1maxScore=greedyScore(0);
+      const p1isHighest=p1score!==null&&p1score>=p1maxScore;
+      const p1verdict=p1ll?p1ll.verdict:null;
+      h+=`<div class="sec"><div class="sec-lbl">2 — Initial Output</div>
         <div style="background:#fff;border:1px solid var(--bd);border-left:3px solid var(--warn);border-radius:6px;padding:12px 16px;">
-          ${p1seq.length
-            ?seqWithProbs(p1seq,'var(--warn)',null)
-            :`<div style="font-size:13px;color:var(--dim);font-style:italic;">No initial output logged.</div>`}
+          ${p1seq.length?`
+          ${seqWithProbs(p1seq,'var(--warn)',null)}
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px;padding-top:8px;border-top:1px solid var(--bd);">
+            <span style="font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);">Path score</span>
+            ${p1isHighest
+              ?`<span style="font-family:var(--mono);font-size:11px;font-weight:600;padding:2px 8px;border-radius:3px;background:var(--oklt);border:1px solid var(--okbd);color:var(--ok);">Highest probability achieved</span>`
+              :`<span style="font-family:var(--mono);font-size:11px;font-weight:600;padding:2px 8px;border-radius:3px;background:var(--errlt);border:1px solid var(--errbd);color:var(--err);">Score: ${p1score}</span>`}
+            ${p1verdict?`<span style="font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin-left:4px;">Verdict</span>
+            <span style="font-family:var(--mono);font-size:11px;font-weight:600;padding:2px 8px;border-radius:3px;
+              background:${p1verdict==='verified'?'var(--oklt)':'var(--errlt)'};
+              border:1px solid ${p1verdict==='verified'?'var(--okbd)':'var(--errbd)'};
+              color:${p1verdict==='verified'?'var(--ok)':'var(--err)'};">
+              ${p1verdict==='verified'?'Verified Truth':'Hallucination'}</span>`:''}
+          </div>`
+          :`<div style="font-size:13px;color:var(--dim);font-style:italic;">No initial output logged.</div>`}
         </div></div>`;
 
-      // Panel 3: Current path + live translation (driven by P2's selections on their lattice)
+      // Panel 3: Current path + live translation
       const sel=S.p2sel[0];
       h+=`<div class="sec"><div class="sec-lbl">3 — Current Path + Live Translation</div>
         ${seqWithProbs(sel, 'var(--p1)', p1seq)}
@@ -1046,7 +1080,7 @@ function renderP1(){
       </div></div>`;
 
     } else {
-      // TX2 Phase 2: P1 = lattice + inline probabilities only (P2 sees the three panels)
+      // TX2 Phase 2: P1 = lattice + inline probabilities only
 
       h+=`<div class="sec">
         <div style="background:#110a08;border:1px solid #6a3010;border-radius:6px;padding:14px 18px;">
@@ -1058,7 +1092,11 @@ function renderP1(){
         </div>
       </div>`;
 
-      h+=`<div class="sec"><div class="btn-row">${[0,1].map(i=>`<button class="btn${i===txIdx?' btn-p1':''}" style="margin-top:0" onclick="setP2ActiveTx(${i})">Transmission 0${i+1}</button>`).join('')}</div></div>`;
+      h+=`<div class="sec">
+        <div style="font-family:var(--mono);font-size:13px;font-weight:600;color:var(--p1);letter-spacing:.04em;">
+          Working on Transmission 2
+        </div>
+      </div>`;
 
       const lattice=LATTICES[1];
       const sel=S.p2sel[1];
@@ -1134,7 +1172,17 @@ function renderP2(){
     const sel=S.p1sel[txIdx];
     const lattice=LATTICES[txIdx];
 
-    h+=`<div class="sec"><div class="btn-row">${[0,1].map(i=>`<button class="btn${i===txIdx?' btn-p2':''}" style="margin-top:0" onclick="setActiveTx(${i})">Transmission 0${i+1}</button>`).join('')}</div></div>`;
+    const tx2=TRANSMISSIONS[txIdx];
+    h+=`<div class="sec">
+      <div style="font-family:var(--mono);font-size:13px;font-weight:600;color:var(--p2);letter-spacing:.04em;margin-bottom:8px;">
+        Working on Transmission ${txIdx+1}
+      </div>
+      <div style="background:var(--bg-inset);border:1px solid var(--p2bd);border-radius:5px;padding:8px 12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        ${tx2.inputSeq.map((sym,si)=>`<span class="tx-sym" style="font-size:15px;">${sym}</span>${si<tx2.inputSeq.length-1?'<span class="tx-arrow">→</span>':''}`).join('')}
+        <span style="margin-left:6px;font-family:var(--mono);font-size:10px;color:var(--dim);">SEED</span>
+        <span class="tx-sym seed" style="font-size:15px;">${tx2.seed}</span>
+      </div>
+    </div>`;
 
     h+=`<div class="sec"><div class="sec-lbl">Given all prior tokens selected, probabilities for the next token are...</div>
       ${renderNeuralLattice({lattice,sel,accentColor:'var(--p2)',selectFnName:'selectCell1',txIdx,p1seq:null,showSymbols:false,showScores:true,clickable:false})}
@@ -1150,7 +1198,7 @@ function renderP2(){
     const txIdx=S.p2activeTx;
 
     if(txIdx===0){
-      // TX1 Phase 2: P2 = lattice + inline probabilities (P1 sees live translation)
+      // TX1 Phase 2: P2 = lattice + inline probabilities
 
       h+=`<div class="sec">
         <div style="background:#110a08;border:1px solid #6a3010;border-radius:6px;padding:14px 18px;">
@@ -1162,18 +1210,41 @@ function renderP2(){
         </div>
       </div>`;
 
-      h+=`<div class="sec"><div class="btn-row">${[0,1].map(i=>`<button class="btn${i===txIdx?' btn-p2':''}" style="margin-top:0" onclick="setP2ActiveTx(${i})">Transmission 0${i+1}</button>`).join('')}</div></div>`;
+      h+=`<div class="sec">
+        <div style="font-family:var(--mono);font-size:13px;font-weight:600;color:var(--p2);letter-spacing:.04em;">
+          Working on Transmission 1
+        </div>
+      </div>`;
 
       const lattice=LATTICES[0];
       const sel=S.p2sel[0];
-
       const p1ll0=lastLog1(0);
       const p1seq0=p1ll0?p1ll0.seq:[];
+
       if(p1seq0.length){
-        h+=`<div class="sec"><div class="sec-lbl">Initial Transmission</div>
-          <div style="background:var(--warnlt);border:1px solid var(--warnbd);border-radius:6px;padding:12px 16px;">
-            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-              ${p1seq0.map((g,i)=>`<span style="font-family:var(--mono);font-size:20px;">${g}</span>${i<p1seq0.length-1?'<span style="color:var(--dim)">→</span>':''}`).join('')}
+        const score0=pathScore(p1ll0.seq);
+        const max0=greedyScore(0);
+        const isH0=score0>=max0;
+        const v0=p1ll0.verdict;
+        h+=`<div class="sec"><div class="sec-lbl">Initial Transmission Output</div>
+          <div style="background:var(--warnlt);border:1px solid var(--warnbd);border-radius:6px;padding:12px 16px;display:flex;flex-direction:column;gap:8px;">
+            <div>
+              <div style="font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--warn);margin-bottom:5px;">In symbol form</div>
+              <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                ${p1seq0.map((g,i)=>`<span style="font-family:var(--mono);font-size:18px;">${g}</span>${i<p1seq0.length-1?'<span style="color:var(--dim)">→</span>':''}`).join('')}
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+              <span style="font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--warn);">Path score</span>
+              ${isH0
+                ?`<span style="font-family:var(--mono);font-size:11px;font-weight:600;padding:2px 8px;border-radius:3px;background:var(--oklt);border:1px solid var(--okbd);color:var(--ok);">Highest probability achieved</span>`
+                :`<span style="font-family:var(--mono);font-size:11px;font-weight:600;padding:2px 8px;border-radius:3px;background:var(--errlt);border:1px solid var(--errbd);color:var(--err);">Score: ${score0}</span>`}
+              <span style="font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--warn);">Verdict</span>
+              <span style="font-family:var(--mono);font-size:11px;font-weight:600;padding:2px 8px;border-radius:3px;
+                background:${v0==='verified'?'var(--oklt)':'var(--errlt)'};
+                border:1px solid ${v0==='verified'?'var(--okbd)':'var(--errbd)'};
+                color:${v0==='verified'?'var(--ok)':'var(--err)'};">
+                ${v0==='verified'?'Verified Truth':'Hallucination'}</span>
             </div>
           </div></div>`;
       }
@@ -1190,7 +1261,6 @@ function renderP2(){
 
     } else {
       // TX2 Phase 2: P2 = three panels (input, initial output+probs, live translation)
-      // P1 controls the TX2 lattice; P2 reads translations as symbols appear
 
       h+=`<div class="sec">
         <div style="background:#110a08;border:1px solid #6a3010;border-radius:6px;padding:14px 18px;">
@@ -1202,30 +1272,56 @@ function renderP2(){
         </div>
       </div>`;
 
-      h+=`<div class="sec"><div class="btn-row">${[0,1].map(i=>`<button class="btn${i===txIdx?' btn-p2':''}" style="margin-top:0" onclick="setP2ActiveTx(${i})">Transmission 0${i+1}</button>`).join('')}</div></div>`;
+      h+=`<div class="sec">
+        <div style="font-family:var(--mono);font-size:13px;font-weight:600;color:var(--p2);letter-spacing:.04em;">
+          Working on Transmission 2
+        </div>
+      </div>`;
 
       const tx2=TRANSMISSIONS[1];
 
-      // Panel 1: Input transmission + English translation
+      // Panel 1: Input transmission — symbol form + English translation signposted
       h+=`<div class="sec"><div class="sec-lbl">1 — Input Transmission</div>
-        <div style="background:var(--bg-inset);border:1px solid var(--bd2);border-radius:6px;padding:12px 16px;">
-          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px;">
-            ${tx2.inputSeq.map((s,si)=>`<span style="font-family:var(--mono);font-size:20px;">${s}</span>${si<tx2.inputSeq.length-1?'<span style="color:var(--dim)">→</span>':''}`).join('')}
+        <div style="background:var(--bg-inset);border:1px solid var(--bd2);border-radius:6px;padding:12px 16px;display:flex;flex-direction:column;gap:10px;">
+          <div>
+            <div style="font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin-bottom:5px;">In symbol form</div>
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+              ${tx2.inputSeq.map((s,si)=>`<span style="font-family:var(--mono);font-size:20px;">${s}</span>${si<tx2.inputSeq.length-1?'<span style="color:var(--dim)">→</span>':''}`).join('')}
+            </div>
           </div>
-          <div style="font-size:14px;color:var(--tx);font-weight:500;">"${inputSeqToEnglish(tx2)}"</div>
+          <div>
+            <div style="font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin-bottom:5px;">Translation in English</div>
+            <div style="font-size:14px;color:var(--tx);font-weight:500;">"${inputSeqToEnglish(tx2)}"</div>
+          </div>
         </div></div>`;
 
-      // Panel 2: Initial output + English + probabilities
+      // Panel 2: Initial output + score + verdict signposted
       const p2ll=lastLog1(1);
       const p2seq=p2ll?p2ll.seq:[];
-      h+=`<div class="sec"><div class="sec-lbl">2 — Initial Output + Probabilities</div>
+      const p2score=p2ll?pathScore(p2ll.seq):null;
+      const p2maxScore=greedyScore(1);
+      const p2isHighest=p2score!==null&&p2score>=p2maxScore;
+      const p2verdict=p2ll?p2ll.verdict:null;
+      h+=`<div class="sec"><div class="sec-lbl">2 — Initial Output</div>
         <div style="background:#fff;border:1px solid var(--bd);border-left:3px solid var(--warn);border-radius:6px;padding:12px 16px;">
-          ${p2seq.length
-            ?seqWithProbs(p2seq,'var(--warn)',null)
-            :`<div style="font-size:13px;color:var(--dim);font-style:italic;">No initial output logged.</div>`}
+          ${p2seq.length?`
+          ${seqWithProbs(p2seq,'var(--warn)',null)}
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px;padding-top:8px;border-top:1px solid var(--bd);">
+            <span style="font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);">Path score</span>
+            ${p2isHighest
+              ?`<span style="font-family:var(--mono);font-size:11px;font-weight:600;padding:2px 8px;border-radius:3px;background:var(--oklt);border:1px solid var(--okbd);color:var(--ok);">Highest probability achieved</span>`
+              :`<span style="font-family:var(--mono);font-size:11px;font-weight:600;padding:2px 8px;border-radius:3px;background:var(--errlt);border:1px solid var(--errbd);color:var(--err);">Score: ${p2score}</span>`}
+            ${p2verdict?`<span style="font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin-left:4px;">Verdict</span>
+            <span style="font-family:var(--mono);font-size:11px;font-weight:600;padding:2px 8px;border-radius:3px;
+              background:${p2verdict==='verified'?'var(--oklt)':'var(--errlt)'};
+              border:1px solid ${p2verdict==='verified'?'var(--okbd)':'var(--errbd)'};
+              color:${p2verdict==='verified'?'var(--ok)':'var(--err)'};">
+              ${p2verdict==='verified'?'Verified Truth':'Hallucination'}</span>`:''}
+          </div>`
+          :`<div style="font-size:13px;color:var(--dim);font-style:italic;">No initial output logged.</div>`}
         </div></div>`;
 
-      // Panel 3: Current path + live translation (driven by P1's selections on their lattice)
+      // Panel 3: Current path + live translation
       const sel2=S.p2sel[1];
       h+=`<div class="sec"><div class="sec-lbl">3 — Current Path + Live Translation</div>
         ${seqWithProbs(sel2, 'var(--p2)', p2seq)}
@@ -1408,8 +1504,11 @@ function selectCell2(txIdx, col, row) {
   syncAndRender();
 }
 
-const _setActiveTx = setActiveTx;
-function setActiveTx(i) { S.activeTx = i; syncAndRender(); }
+function setActiveTx(i){
+  if(i===1&&!lastLog1(0))return; // TX2 locked until TX1 has at least one log
+  S.activeTx=i;
+  syncAndRender();
+}
 
 const _setP2ActiveTx = setP2ActiveTx;
 function setP2ActiveTx(i) { S.p2activeTx = i; syncAndRender(); }
