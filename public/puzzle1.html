@@ -962,7 +962,7 @@ function connectWS(forceReset) {
       S = freshState();
       syncState();
     } else {
-      ws.send(JSON.stringify({type:'hello'}));
+      ws.send(JSON.stringify({type:'hello', puzzle:'p1'}));
     }
   };
   ws.onmessage = (e) => {
@@ -992,7 +992,7 @@ function scheduleReconnect() {
 
 function syncState() {
   if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({type:'state', state: syncableState()}));
+    ws.send(JSON.stringify({type:'state', puzzle:'p1', state: syncableState()}));
   }
 }
 
