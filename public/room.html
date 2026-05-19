@@ -143,7 +143,7 @@ const INTRO_VIDEO = '/videos/intro.mp4';
   phase:
     'idle'          — admin hasn't started yet
     'intro-video'   — playing the main intro video
-    'role-select'   — players choose Asset 1 / Asset 2
+    'role-select'   — players choose Agent 1 / Agent 2
     'puzzle-video'  — playing a puzzle intro video
     'puzzle'        — puzzle is active
     'complete'      — all puzzles done
@@ -162,8 +162,8 @@ function freshRoomState() {
     currentPuzzle: null,  // puzzle number
     videoSrc: null,       // current video to show
     videoStartTime: null, // server timestamp (ms) when video started
-    asset1Screen: null,   // 'screen2' or 'screen3'
-    asset2Screen: null,
+    asset1Screen: null,   // 'screen2' or 'screen3'  (Agent 1)
+    asset2Screen: null,   // (Agent 2)
   };
 }
 
@@ -184,6 +184,8 @@ function connectWS() {
   ws.onopen = () => {
     wsConnected = true;
     updateBadge(true);
+    // Always request current room state on (re)connect — catches up after
+    // cold starts, backgrounded tabs, or network drops
     ws.send(JSON.stringify({ type:'hello', puzzle:'room', screenId }));
   };
 
@@ -201,6 +203,21 @@ function connectWS() {
   ws.onerror = () => ws.close();
 }
 
+// For player screens: poll the server for current room state every 3 seconds
+// until we receive a non-idle state. This guarantees the video starts even if
+// the initial hello response arrived before the session was started.
+function startStatePoll() {
+  if (screenId === 'admin') return; // admin drives state, doesn't need polling
+  const poll = setInterval(() => {
+    // If we have a real session state, stop polling
+    if (R.phase !== 'idle') { clearInterval(poll); return; }
+    // Re-request state from server
+    if (ws && wsConnected) {
+      ws.send(JSON.stringify({ type:'hello', puzzle:'room', screenId }));
+    }
+  }, 3000);
+}
+
 function syncRoom() {
   if (ws && wsConnected) {
     ws.send(JSON.stringify({ type:'state', puzzle:'room', state: R }));
@@ -208,6 +225,7 @@ function syncRoom() {
 }
 
 function applyRoomState(remote) {
+  if (!remote) return; // null = no session started yet, keep idle
   R = { ...freshRoomState(), ...remote };
   render();
 }
@@ -453,7 +471,7 @@ function renderRoleSelect(main) {
     main.innerHTML = `
       <div class="waiting-screen">
         <div style="font-size:48px;margin-bottom:16px;">${myRole === 'p1' ? '🕵️' : '🕵️‍♀️'}</div>
-        <div class="puzzle-badge">You are Asset ${myRole === 'p1' ? '1' : '2'}</div>
+        <div class="puzzle-badge">You are Agent ${myRole === 'p1' ? '1' : '2'}</div>
         <div class="waiting-sub">Role confirmed. Briefing incoming...</div>
       </div>`;
     return;
@@ -467,14 +485,14 @@ function renderRoleSelect(main) {
         <div class="role-card role-card-a1${R.asset1Screen && R.asset1Screen !== screenId ? ' other-claimed' : R.asset1Screen === screenId ? ' claimed' : ''}"
           onclick="claimRole('p1')">
           <div class="role-icon">🕵️</div>
-          <div class="role-name">Asset 1</div>
+          <div class="role-name">Agent 1</div>
           ${R.asset1Screen === screenId ? '<div class="role-claimed-badge">✓ This is you</div>' :
             R.asset1Screen ? '<div class="role-waiting">Claimed</div>' : ''}
         </div>
         <div class="role-card role-card-a2${R.asset2Screen && R.asset2Screen !== screenId ? ' other-claimed' : R.asset2Screen === screenId ? ' claimed' : ''}"
           onclick="claimRole('p2')">
           <div class="role-icon">🕵️‍♀️</div>
-          <div class="role-name">Asset 2</div>
+          <div class="role-name">Agent 2</div>
           ${R.asset2Screen === screenId ? '<div class="role-claimed-badge">✓ This is you</div>' :
             R.asset2Screen ? '<div class="role-waiting">Claimed</div>' : ''}
         </div>
@@ -566,8 +584,8 @@ function renderAdmin(main) {
             <div class="status-row">
               <span class="status-chip ${phase === 'idle' ? 'chip-pending' : 'chip-done'}">Phase: ${phase}</span>
               ${puzzleNum ? `<span class="status-chip chip-active">Puzzle: ${puzzleNum}</span>` : ''}
-              <span class="status-chip ${R.asset1Screen ? 'chip-done' : 'chip-pending'}">Asset 1: ${R.asset1Screen || 'unassigned'}</span>
-              <span class="status-chip ${R.asset2Screen ? 'chip-done' : 'chip-pending'}">Asset 2: ${R.asset2Screen || 'unassigned'}</span>
+              <span class="status-chip ${R.asset1Screen ? 'chip-done' : 'chip-pending'}">Agent 1: ${R.asset1Screen || 'unassigned'}</span>
+              <span class="status-chip ${R.asset2Screen ? 'chip-done' : 'chip-pending'}">Agent 2: ${R.asset2Screen || 'unassigned'}</span>
             </div>
           </div>
 
@@ -658,7 +676,7 @@ if (ready) {
   render();
   if (location.protocol !== 'file:') {
     connectWS();
-    // Set up win watcher on all screens after connection established
+    startStatePoll();
     setTimeout(() => { if (ws) setupWinWatcher(); }, 800);
   } else {
     updateBadge(true);
