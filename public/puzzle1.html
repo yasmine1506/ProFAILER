@@ -436,6 +436,12 @@ header{position:fixed;top:0;left:0;right:0;height:56px;
   border-radius:5px;font-family:var(--mono);font-size:13px;font-weight:600;color:var(--accent);
   cursor:pointer;letter-spacing:.06em;transition:all .2s;display:block;margin-left:auto;margin-right:auto;}
 .continue-btn:hover:not(:disabled){background:var(--accent);color:#fff;}
+
+/* ── Puzzle timer (injected from room shell) ── */
+.puzzle-timer{display:none;align-items:center;gap:5px;font-family:var(--mono);
+  font-size:14px;font-weight:700;color:#f07070;margin-left:auto;margin-right:4px;
+  background:rgba(240,112,112,0.12);border:1px solid rgba(240,112,112,0.3);
+  padding:3px 10px;border-radius:4px;flex-shrink:0;}
 .continue-btn:disabled{opacity:.4;cursor:not-allowed;}
 /* ── PROCEED BUTTON ── */
 .proceed-wrap{
@@ -538,7 +544,9 @@ header{position:fixed;top:0;left:0;right:0;height:56px;
   <div class="hdr-center">
     <button class="btn" onclick="openNotebook()">NOTEBOOK</button>
   </div>
-  <div class="hdr-right"></div>
+  <div class="hdr-right">
+    <div id="puzzle-timer-display" class="puzzle-timer">⏱ <span id="puzzle-timer-text">20:00</span></div>
+  </div>
 </header>
 <div id="toastWrap"></div>
 <div id="tabBar">
@@ -1001,6 +1009,29 @@ function setWsDot(status) {
 }
 
 function syncAndRender() { renderAll(); syncState(); }
+
+
+// ── Puzzle timer — receives ticks from parent room shell ──────────────────
+(function(){
+  function fmtTimer(ms){
+    if(ms===null||ms===undefined)return'--:--';
+    var s=Math.ceil(ms/1000),m=Math.floor(s/60),sec=s%60;
+    return String(m).padStart(2,'0')+':'+String(sec).padStart(2,'0');
+  }
+  window.addEventListener('message',function(e){
+    if(!e.data||e.data.type!=='timerTick')return;
+    var el=document.getElementById('puzzle-timer-display');
+    if(!el)return;
+    var ms=e.data.remaining;
+    el.style.display='flex';
+    var span=document.getElementById('puzzle-timer-text');
+    if(span)span.textContent=fmtTimer(ms);
+    // Turn urgent colour when under 5 minutes
+    el.style.borderColor=ms<300000?'rgba(240,112,112,0.6)':'rgba(240,112,112,0.3)';
+    el.style.background=ms<300000?'rgba(240,112,112,0.18)':'rgba(240,112,112,0.10)';
+    if(ms<=0){span.textContent='00:00';}
+  });
+})();
 
 function completePuzzle1() {
   // Signal the parent room shell to advance to the next puzzle.

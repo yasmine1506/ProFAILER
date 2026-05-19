@@ -174,6 +174,12 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--tx);font-
 
 .ag-text{font-family:var(--mono);font-size:22px;font-weight:600;color:var(--ok);letter-spacing:.16em;text-transform:uppercase;text-align:center;margin-top:10px;}
 .text-dim{color:var(--dim);font-size:17px;}
+
+/* ── Puzzle timer (injected from room shell) ── */
+.puzzle-timer{display:none;align-items:center;gap:5px;font-family:var(--mono);
+  font-size:14px;font-weight:700;color:#f07070;margin-left:auto;margin-right:4px;
+  background:rgba(240,112,112,0.12);border:1px solid rgba(240,112,112,0.3);
+  padding:3px 10px;border-radius:4px;flex-shrink:0;}
 .divider{height:1px;background:var(--bd);margin:8px 0;}
 </style>
 </head>
@@ -182,6 +188,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--tx);font-
   <div class="app-header">
     <div class="logo">The Xenolinguist's Dilemma <span>DEER Prototype — Pilot v1.7</span></div>
     <button onclick="showSearleNotes()" style="margin-left:auto;background:transparent;border:1px solid #3a5070;border-radius:4px;color:#8090a8;font-family:var(--mono);font-size:11px;padding:5px 12px;cursor:pointer;letter-spacing:.06em;transition:all .2s;" onmouseover="this.style.borderColor='#7ab0f0';this.style.color='#c0d8f0'" onmouseout="this.style.borderColor='#3a5070';this.style.color='#8090a8'">📋 Dr. Searle's Notes</button>
+    <div id="puzzle-timer-display" class="puzzle-timer">⏱ <span id="puzzle-timer-text">20:00</span></div>
     <div class="sig"><div class="sig-dot"></div>XENOX-7 SIGNAL ACTIVE</div>
   </div>
   <div class="view-tabs">
@@ -1432,6 +1439,29 @@ function renderP2(){
     +logBanner+h;
 }
 
+
+// ── Puzzle timer — receives ticks from parent room shell ──────────────────
+(function(){
+  function fmtTimer(ms){
+    if(ms===null||ms===undefined)return'--:--';
+    var s=Math.ceil(ms/1000),m=Math.floor(s/60),sec=s%60;
+    return String(m).padStart(2,'0')+':'+String(sec).padStart(2,'0');
+  }
+  window.addEventListener('message',function(e){
+    if(!e.data||e.data.type!=='timerTick')return;
+    var el=document.getElementById('puzzle-timer-display');
+    if(!el)return;
+    var ms=e.data.remaining;
+    el.style.display='flex';
+    var span=document.getElementById('puzzle-timer-text');
+    if(span)span.textContent=fmtTimer(ms);
+    // Turn urgent colour when under 5 minutes
+    el.style.borderColor=ms<300000?'rgba(240,112,112,0.6)':'rgba(240,112,112,0.3)';
+    el.style.background=ms<300000?'rgba(240,112,112,0.18)':'rgba(240,112,112,0.10)';
+    if(ms<=0){span.textContent='00:00';}
+  });
+})();
+
 /* ═══════════════════════════════════════════
    SYNC — STATE FIELDS THAT ARE LOCAL-ONLY
    These are per-screen UI flags that should NOT
@@ -1491,13 +1521,17 @@ function connectWS(forceReset = false) {
   ws.onmessage = (event) => {
     let msg;
     try { msg = JSON.parse(event.data); } catch { return; }
-    // Handle both new multi-puzzle format and legacy format
     if (msg.type === 'state' && (!msg.puzzle || msg.puzzle === 'p2')) {
       applyRemoteState(msg.state);
     }
-    // On first connect server sends full room state — extract puzzle 2 slice
     if (msg.type === 'room' && msg.room && msg.room.p2) {
       applyRemoteState(msg.room.p2);
+    }
+    // Admin reset — clear puzzle state
+    if (msg.type === 'room' && msg.room && msg.room.p2 === null) {
+      S = freshState();
+      renderAll();
+      renderModal();
     }
   };
 

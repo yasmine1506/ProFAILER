@@ -84,6 +84,12 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);
 /* ── Section label ── */
 .section-label{font-family:var(--font-head);font-size:10px;letter-spacing:3px;
   text-transform:uppercase;color:var(--dim);display:flex;align-items:center;gap:8px;}
+
+/* ── Puzzle timer (injected from room shell) ── */
+.puzzle-timer{display:none;align-items:center;gap:5px;font-family:var(--mono);
+  font-size:14px;font-weight:700;color:#f07070;margin-left:auto;margin-right:4px;
+  background:rgba(240,112,112,0.12);border:1px solid rgba(240,112,112,0.3);
+  padding:3px 10px;border-radius:4px;flex-shrink:0;}
 .section-label::after{content:'';flex:1;height:1px;background:var(--border);}
 
 /* ── Control center title ── */
@@ -405,7 +411,8 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);
 <div class="app">
   <div class="app-header">
     <div class="logo">XENOX-7 <span>DEER PUZZLE 3 — PARTS FRAMEWORK</span></div>
-    <div class="sig"><div class="sig-dot" id="conn-dot"></div><span id="conn-label">CONNECTING...</span></div>
+    <div class="sig"><div class="sig-dot" id="conn-dot"></div><span id="conn-label">
+    <div id="puzzle-timer-display" class="puzzle-timer">⏱ <span id="puzzle-timer-text">20:00</span></div>CONNECTING...</span></div>
   </div>
   <div class="view-tabs" id="view-tabs">
     <button class="tab-btn tab-1" id="tab-p1" onclick="switchView('p1')">Player 1</button>
@@ -417,6 +424,29 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);
 <div id="modal-root"></div>
 
 <script>
+
+// ── Puzzle timer — receives ticks from parent room shell ──────────────────
+(function(){
+  function fmtTimer(ms){
+    if(ms===null||ms===undefined)return'--:--';
+    var s=Math.ceil(ms/1000),m=Math.floor(s/60),sec=s%60;
+    return String(m).padStart(2,'0')+':'+String(sec).padStart(2,'0');
+  }
+  window.addEventListener('message',function(e){
+    if(!e.data||e.data.type!=='timerTick')return;
+    var el=document.getElementById('puzzle-timer-display');
+    if(!el)return;
+    var ms=e.data.remaining;
+    el.style.display='flex';
+    var span=document.getElementById('puzzle-timer-text');
+    if(span)span.textContent=fmtTimer(ms);
+    // Turn urgent colour when under 5 minutes
+    el.style.borderColor=ms<300000?'rgba(240,112,112,0.6)':'rgba(240,112,112,0.3)';
+    el.style.background=ms<300000?'rgba(240,112,112,0.18)':'rgba(240,112,112,0.10)';
+    if(ms<=0){span.textContent='00:00';}
+  });
+})();
+
 // ══════════════════════════════════════════════════════════
 // STORY DATABASE
 // ══════════════════════════════════════════════════════════

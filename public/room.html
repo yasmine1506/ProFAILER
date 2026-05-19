@@ -119,6 +119,10 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 <div class="app">
   <div class="hdr">
     <div class="hdr-title">DEER — Digital Educational Escape Room <span class="hdr-sub">Room Shell v1.0</span></div>
+    <div id="room-timer" style="display:none;align-items:center;gap:5px;font-family:var(--mono);
+      font-size:14px;font-weight:700;color:#f07070;margin-left:auto;margin-right:10px;
+      background:rgba(240,112,112,0.12);border:1px solid rgba(240,112,112,0.3);
+      padding:3px 10px;border-radius:4px;">⏱ <span id="room-timer-text">20:00</span></div>
     <div class="conn-dot" id="conn-dot"></div>
     <span class="conn-label" id="conn-label">CONNECTING...</span>
   </div>
@@ -157,13 +161,14 @@ const LOCAL_KEYS = new Set(['screenId','assignedAs']);
 function freshRoomState() {
   return {
     phase: 'idle',
-    puzzles: [],          // ordered list e.g. [2,3]
-    currentIdx: -1,       // index into puzzles array
-    currentPuzzle: null,  // puzzle number
-    videoSrc: null,       // current video to show
-    videoStartTime: null, // server timestamp (ms) when video started
-    asset1Screen: null,   // 'screen2' or 'screen3'  (Agent 1)
-    asset2Screen: null,   // (Agent 2)
+    puzzles: [],
+    currentIdx: -1,
+    currentPuzzle: null,
+    videoSrc: null,
+    videoStartTime: null,
+    puzzleStartTime: null,  // when current puzzle began — drives 20min timer
+    asset1Screen: null,
+    asset2Screen: null,
   };
 }
 
@@ -325,7 +330,6 @@ function adminReset() {
 }
 
 function adminAdvance() {
-  // Force-advance from any stuck state — useful if video auto-play fails
   if (R.phase === 'intro-video') {
     R.phase = 'role-select';
     R.videoSrc = null;
@@ -334,6 +338,7 @@ function adminAdvance() {
   } else if (R.phase === 'puzzle-video') {
     R.phase = 'puzzle';
     R.videoSrc = null;
+    R.puzzleStartTime = Date.now();
   } else if (R.phase === 'puzzle') {
     advanceAfterPuzzle();
   }
@@ -638,7 +643,7 @@ function renderAdmin(main) {
     if ((phase === 'intro-video' || phase === 'puzzle-video') && R.videoSrc) {
       renderVideo(() => {
         if (phase === 'intro-video') { R.phase = 'role-select'; R.videoSrc = null; syncRoom(); render(); }
-        else if (phase === 'puzzle-video') { R.phase = 'puzzle'; R.videoSrc = null; syncRoom(); render(); }
+        else if (phase === 'puzzle-video') { R.phase = 'puzzle'; R.videoSrc = null; R.puzzleStartTime = Date.now(); syncRoom(); render(); }
       });
     } else {
       _currentVideoKey = null;
@@ -652,6 +657,7 @@ function renderAdmin(main) {
             <div class="status-row">
               <span class="status-chip ${phase === 'idle' ? 'chip-pending' : 'chip-done'}">Phase: ${phase}</span>
               ${puzzleNum ? `<span class="status-chip chip-active">Puzzle: ${puzzleNum}</span>` : ''}
+              ${R.phase === 'puzzle' ? `<span class="status-chip" id="admin-timer" style="background:#3a0a0a;color:#f07070;border-color:#7a2020;">⏱ ${formatTimer(timerRemaining())}</span>` : ''}
               <span class="status-chip ${R.asset1Screen ? 'chip-done' : 'chip-pending'}">Agent 1: ${R.asset1Screen || 'unassigned'}</span>
               <span class="status-chip ${R.asset2Screen ? 'chip-done' : 'chip-pending'}">Agent 2: ${R.asset2Screen || 'unassigned'}</span>
             </div>
@@ -676,7 +682,51 @@ function renderAdmin(main) {
   }
 }
 
-// Admin puzzle toggle
+// ══════════════════════════════════════════════════════════
+// PUZZLE TIMER — 20 minutes per puzzle
+// ══════════════════════════════════════════════════════════
+const PUZZLE_DURATION_MS = 20 * 60 * 1000; // 20 minutes
+
+function timerRemaining() {
+  if (!R.puzzleStartTime || R.phase !== 'puzzle') return null;
+  const elapsed = Date.now() - R.puzzleStartTime;
+  return Math.max(0, PUZZLE_DURATION_MS - elapsed);
+}
+
+function formatTimer(ms) {
+  if (ms === null) return '--:--';
+  const totalSec = Math.ceil(ms / 1000);
+  const min = Math.floor(totalSec / 60);
+  const sec = totalSec % 60;
+  return `${String(min).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+}
+
+function updateTimerDisplay() {
+  const ms = timerRemaining();
+  const text = formatTimer(ms);
+  // Update room shell header timer
+  const timerDiv = document.getElementById('room-timer');
+  const timerText = document.getElementById('room-timer-text');
+  if (timerDiv) timerDiv.style.display = (R.phase === 'puzzle') ? 'flex' : 'none';
+  if (timerText) timerText.textContent = text;
+  // Update admin panel timer chip if visible
+  const adminEl = document.getElementById('admin-timer');
+  if (adminEl) adminEl.textContent = `⏱ ${text}`;
+  // Post timer to puzzle iframe so it can show it in its own header
+  const iframe = document.getElementById('puzzle-frame');
+  if (iframe && iframe.contentWindow && R.phase === 'puzzle') {
+    try {
+      iframe.contentWindow.postMessage({
+        type: 'timerTick',
+        remaining: ms,
+        startTime: R.puzzleStartTime
+      }, '*');
+    } catch(e) {}
+  }
+}
+
+// Tick every second
+setInterval(updateTimerDisplay, 1000);
 const selectedPuzzles = [];
 function togglePuzzle(n) {
   const idx = selectedPuzzles.indexOf(n);
