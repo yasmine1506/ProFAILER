@@ -508,26 +508,47 @@ function showSearleNotes(){S.showResultModal=false;S.showNotesModal=true;renderM
 function showLogModal(who){S.showLogModal=who;renderModal();}
 function closeModal(){S.showLogModal=null;S.showConfirm=false;S.showNotesModal=false;S.showResultModal=false;renderModal();}
 function showConfirmTransmit(){
-  // Block if either transmission has no logged output
-  const missing=[];
-  if(!lastLog1(0))missing.push('Transmission 01');
-  if(!lastLog1(1))missing.push('Transmission 02');
-  if(missing.length){
-    const root=document.getElementById('modal-root');
-    root.innerHTML=`<div class="modal-overlay" onclick="if(event.target===this)this.innerHTML=''">
-      <div class="modal-box">
-        <div class="modal-title" style="color:var(--err);">⚠ Incomplete Transmission</div>
-        <div style="font-size:14px;color:var(--mu);line-height:1.7;margin-bottom:16px;">
-          Cannot transmit — no output logged for <strong>${missing.join(' and ')}</strong>.<br>
-          Log at least one output sequence for each transmission before proceeding.
+  if(S.phase===2){
+    // Phase 2: check both transmissions have a phase 2 log
+    const missing=[];
+    if(!lastLog2(0))missing.push('Transmission 01');
+    if(!lastLog2(1))missing.push('Transmission 02');
+    if(missing.length){
+      const root=document.getElementById('modal-root');
+      root.innerHTML=`<div class="modal-overlay" onclick="if(event.target===this)this.innerHTML=''">
+        <div class="modal-box">
+          <div class="modal-title" style="color:var(--err);">⚠ Incomplete Transmission</div>
+          <div style="font-size:14px;color:var(--mu);line-height:1.7;margin-bottom:16px;">
+            Cannot transmit — no revised output logged for <strong>${missing.join(' and ')}</strong>.<br>
+            Log at least one output sequence for each transmission before proceeding.
+          </div>
+          <button class="btn" onclick="document.getElementById('modal-root').innerHTML=''">Go back</button>
         </div>
-        <button class="btn" onclick="document.getElementById('modal-root').innerHTML=''">Go back</button>
-      </div>
-    </div>`;
-    return;
+      </div>`;
+      return;
+    }
+    confirmTransmit2();
+  } else {
+    // Phase 1: check both transmissions have a phase 1 log
+    const missing=[];
+    if(!lastLog1(0))missing.push('Transmission 01');
+    if(!lastLog1(1))missing.push('Transmission 02');
+    if(missing.length){
+      const root=document.getElementById('modal-root');
+      root.innerHTML=`<div class="modal-overlay" onclick="if(event.target===this)this.innerHTML=''">
+        <div class="modal-box">
+          <div class="modal-title" style="color:var(--err);">⚠ Incomplete Transmission</div>
+          <div style="font-size:14px;color:var(--mu);line-height:1.7;margin-bottom:16px;">
+            Cannot transmit — no output logged for <strong>${missing.join(' and ')}</strong>.<br>
+            Log at least one output sequence for each transmission before proceeding.
+          </div>
+          <button class="btn" onclick="document.getElementById('modal-root').innerHTML=''">Go back</button>
+        </div>
+      </div>`;
+      return;
+    }
+    confirmTransmit();
   }
-  // No confirm dialog — transmit immediately
-  confirmTransmit();
 }
 
 function resetGame(){S=freshState();renderModal();renderAll();}
