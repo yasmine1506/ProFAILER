@@ -255,7 +255,16 @@ function checkPuzzleWin(puzzleSlot, puzzleState) {
 
   if (!won) return;
 
-  if (puzzleSlot === 2) {
+  if (puzzleSlot === 1) {
+    // Player-driven advancement via Continue button in the iframe
+    const handler = (e) => {
+      if (e.data === 'puzzle1-complete') {
+        window.removeEventListener('message', handler);
+        if (R.phase === 'puzzle' && R.currentPuzzle === 1) onPuzzleComplete();
+      }
+    };
+    window.addEventListener('message', handler);
+  } else if (puzzleSlot === 2) {
     // Puzzle 2 has a narrative win modal players need to read.
     // Advancement is player-driven — they click "Continue" inside the iframe,
     // which posts a message to this parent frame. Listen for it once.
@@ -263,6 +272,15 @@ function checkPuzzleWin(puzzleSlot, puzzleState) {
       if (e.data === 'puzzle2-complete') {
         window.removeEventListener('message', handler);
         if (R.phase === 'puzzle' && R.currentPuzzle === 2) onPuzzleComplete();
+      }
+    };
+    window.addEventListener('message', handler);
+  } else if (puzzleSlot === 3) {
+    // Player-driven advancement via "Get out!" button in the iframe
+    const handler = (e) => {
+      if (e.data === 'puzzle3-complete') {
+        window.removeEventListener('message', handler);
+        if (R.phase === 'puzzle' && R.currentPuzzle === 3) onPuzzleComplete();
       }
     };
     window.addEventListener('message', handler);

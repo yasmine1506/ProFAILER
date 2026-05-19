@@ -432,6 +432,11 @@ header{position:fixed;top:0;left:0;right:0;height:56px;
   color:var(--success);text-shadow:0 0 20px rgba(0,255,136,0.5);margin-bottom:16px;
 }
 .complete-msg{font-size:13px;line-height:1.8;color:var(--text);max-width:580px;margin:0 auto}
+.continue-btn{margin-top:24px;padding:12px 32px;background:transparent;border:2px solid var(--accent);
+  border-radius:5px;font-family:var(--mono);font-size:13px;font-weight:600;color:var(--accent);
+  cursor:pointer;letter-spacing:.06em;transition:all .2s;display:block;margin-left:auto;margin-right:auto;}
+.continue-btn:hover:not(:disabled){background:var(--accent);color:#fff;}
+.continue-btn:disabled{opacity:.4;cursor:not-allowed;}
 /* ── PROCEED BUTTON ── */
 .proceed-wrap{
   text-align:center;margin:0 auto 28px;max-width:700px;
@@ -577,6 +582,9 @@ header{position:fixed;top:0;left:0;right:0;height:56px;
       meaningful ones — remain blind to context, making them susceptible to
       adversarial manipulation through feature co-occurrence alone.
     </div>
+    <button class="continue-btn" id="continueBtn" onclick="completePuzzle1()">
+      Continue to next mission →
+    </button>
   </div>
 
   <!-- Main activity (hidden on success) -->
@@ -983,6 +991,14 @@ function setWsDot(status) {
 }
 
 function syncAndRender() { renderAll(); syncState(); }
+
+function completePuzzle1() {
+  // Signal the parent room shell to advance to the next puzzle.
+  // Disable the button immediately so only one player triggers it.
+  const btn = document.getElementById('continueBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Advancing...'; }
+  window.parent.postMessage('puzzle1-complete', '*');
+}
 
 // ══════════════════════════════════════════════════════
 //  TOAST
