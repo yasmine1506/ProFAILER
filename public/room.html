@@ -207,15 +207,25 @@ function connectWS() {
 // until we receive a non-idle state. This guarantees the video starts even if
 // the initial hello response arrived before the session was started.
 function startStatePoll() {
-  if (screenId === 'admin') return; // admin drives state, doesn't need polling
+  if (screenId === 'admin') return;
+  let attempts = 0;
   const poll = setInterval(() => {
-    // If we have a real session state, stop polling
     if (R.phase !== 'idle') { clearInterval(poll); return; }
-    // Re-request state from server
+    attempts++;
     if (ws && wsConnected) {
       ws.send(JSON.stringify({ type:'hello', puzzle:'room', screenId }));
     }
-  }, 3000);
+    // After 15 attempts (15s at 1s interval), slow down to every 3s
+    if (attempts === 15) {
+      clearInterval(poll);
+      const slowPoll = setInterval(() => {
+        if (R.phase !== 'idle') { clearInterval(slowPoll); return; }
+        if (ws && wsConnected) {
+          ws.send(JSON.stringify({ type:'hello', puzzle:'room', screenId }));
+        }
+      }, 3000);
+    }
+  }, 1000);
 }
 
 function syncRoom() {
