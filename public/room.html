@@ -240,9 +240,12 @@ function applyRoomState(remote) {
   render();
 }
 
+const _winListenerRegistered = {};
+
 function checkPuzzleWin(puzzleSlot, puzzleState) {
   if (R.phase !== 'puzzle') return;
   if (R.currentPuzzle !== puzzleSlot) return;
+  if (_winListenerRegistered[puzzleSlot]) return; // only register once
 
   let won = false;
   if (puzzleSlot === 1) won = puzzleState.phase2Complete === true;
@@ -255,8 +258,9 @@ function checkPuzzleWin(puzzleSlot, puzzleState) {
 
   if (!won) return;
 
+  _winListenerRegistered[puzzleSlot] = true; // mark so we don't register again
+
   if (puzzleSlot === 1) {
-    // Player-driven advancement via Continue button in the iframe
     const handler = (e) => {
       if (e.data === 'puzzle1-complete') {
         window.removeEventListener('message', handler);
@@ -265,9 +269,6 @@ function checkPuzzleWin(puzzleSlot, puzzleState) {
     };
     window.addEventListener('message', handler);
   } else if (puzzleSlot === 2) {
-    // Puzzle 2 has a narrative win modal players need to read.
-    // Advancement is player-driven — they click "Continue" inside the iframe,
-    // which posts a message to this parent frame. Listen for it once.
     const handler = (e) => {
       if (e.data === 'puzzle2-complete') {
         window.removeEventListener('message', handler);
@@ -276,7 +277,6 @@ function checkPuzzleWin(puzzleSlot, puzzleState) {
     };
     window.addEventListener('message', handler);
   } else if (puzzleSlot === 3) {
-    // Player-driven advancement via "Get out!" button in the iframe
     const handler = (e) => {
       if (e.data === 'puzzle3-complete') {
         window.removeEventListener('message', handler);
@@ -287,6 +287,11 @@ function checkPuzzleWin(puzzleSlot, puzzleState) {
   } else {
     onPuzzleComplete();
   }
+}
+
+function clearWinListeners() {
+  // Clear win listener flags when session resets so they re-register on next session
+  Object.keys(_winListenerRegistered).forEach(k => delete _winListenerRegistered[k]);
 }
 
 function updateBadge(ok) {
@@ -311,6 +316,11 @@ function adminStartSession(puzzleOrder) {
 
 function adminReset() {
   R = freshRoomState();
+  clearWinListeners();
+  // Clear puzzle states too so next session starts fresh
+  if (ws && wsConnected) {
+    ws.send(JSON.stringify({ type: 'reset-all' }));
+  }
   syncRoom();
   render();
 }

@@ -968,7 +968,17 @@ function connectWS(forceReset) {
   ws.onmessage = (e) => {
     try {
       const msg = JSON.parse(e.data);
-      if (msg.type === 'state') applyRemoteState(msg.state);
+      if (msg.type === 'state' && (!msg.puzzle || msg.puzzle === 'p1')) {
+        applyRemoteState(msg.state);
+      }
+      // When server clears all puzzle states (admin reset), reset this puzzle too
+      if (msg.type === 'room' && msg.room && msg.room.p1 === null) {
+        S = freshState();
+        renderAll();
+      }
+      if (msg.type === 'room' && msg.room?.p1) {
+        applyRemoteState(msg.room.p1);
+      }
     } catch(ex) {}
   };
   ws.onclose = () => { setWsDot('error'); scheduleReconnect(); };

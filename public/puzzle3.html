@@ -590,7 +590,8 @@ function syncableState() {
 }
 
 function applyRemoteState(remote) {
-  const wasPhase1 = S.phase === 1;
+  const wasWinShown = S.g.winShown;
+  const wasPhase2 = S.phase === 2;
   const wasWon = S.p2done && S.p2Attempts[0]?.results &&
     Object.values(S.p2Attempts[0].results).every(Boolean);
 
@@ -598,13 +599,15 @@ function applyRemoteState(remote) {
     if (!LOCAL_KEYS.has(k)) S[k] = remote[k];
   }
 
+  const isWinShownNow = S.g.winShown;
   const isPhase2Now = S.phase === 2;
   const isWon = S.p2done && S.p2Attempts[0]?.results &&
     Object.values(S.p2Attempts[0].results).every(Boolean);
 
-  // Phase 1 → 2 transition: show Lock 1 modal on this screen if not already shown
-  if (wasPhase1 && isPhase2Now && !S.showModal) {
-    showModal('🔓 Lock 1 Disabled!', 'The lockdown has been successfully disabled.', true, null);
+  // Phase 1 win: g.winShown just became true — show Lock 1 modal on this screen
+  // (P1 shows it directly in generateStory; P2 detects it here)
+  if (!wasWinShown && isWinShownNow && !isPhase2Now && !S.showModal) {
+    showModal('🔓 Lock 1 Disabled!', 'The lockdown has been successfully disabled.', true, goToPhase2);
   }
   // Phase 2 win: show the exit modal if not already shown
   else if (!wasWon && isWon && !S.showModal) {
@@ -1387,6 +1390,14 @@ function connectWS(forceReset = false) {
     }
     if (msg.type === 'room' && msg.room?.p3) {
       applyRemoteState(msg.room.p3);
+    }
+    // Admin reset — clear puzzle state
+    if (msg.type === 'room' && msg.room && msg.room.p3 === null) {
+      S = freshState();
+      S.showModal = false;
+      S.modalData = null;
+      renderAll();
+      renderModal();
     }
   };
 
