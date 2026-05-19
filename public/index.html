@@ -826,14 +826,13 @@ function sharedScreenHTML(){
       const isHighest=score!==null&&score>=maxScore;
       const justLogged=S.lastLogged&&S.lastLogged.txIdx===i&&Date.now()-S.lastLogged.time<2000;
       const locked=i===1&&!lastLog1(0);
+      const borderColor=isActive?'var(--p1)':locked?'var(--bd)':'var(--bd2)';
 
       let scoreBadge='';
       if(ll){
-        if(isHighest){
-          scoreBadge=`<span style="font-family:var(--mono);font-size:11px;font-weight:600;padding:2px 8px;border-radius:3px;background:var(--oklt);border:1px solid var(--okbd);color:var(--ok);">Highest probability achieved</span>`;
-        } else {
-          scoreBadge=`<span style="font-family:var(--mono);font-size:11px;font-weight:600;padding:2px 8px;border-radius:3px;background:var(--errlt);border:1px solid var(--errbd);color:var(--err);">Score: ${score}</span>`;
-        }
+        scoreBadge=isHighest
+          ?`<span style="font-family:var(--mono);font-size:11px;font-weight:600;padding:2px 8px;border-radius:3px;background:var(--oklt);border:1px solid var(--okbd);color:var(--ok);">Highest probability achieved</span>`
+          :`<span style="font-family:var(--mono);font-size:11px;font-weight:600;padding:2px 8px;border-radius:3px;background:var(--errlt);border:1px solid var(--errbd);color:var(--err);">Probability score: ${score}</span>`;
         if(S.transmitted){
           const v=S.finalVerdicts[i]||ll.verdict;
           const vcls=v==='verified'?'var(--ok)':v==='hallucination'?'var(--err)':'var(--dim)';
@@ -843,32 +842,39 @@ function sharedScreenHTML(){
         }
       }
 
-      h+=`<div style="margin-bottom:12px;">
-        <button onclick="${locked?'':` setActiveTx(${i})`}" style="width:100%;padding:11px 14px;border-radius:6px;font-size:14px;font-weight:600;
-          border:2px solid ${isActive?'var(--p1)':locked?'var(--bd)':'var(--bd2)'};
-          background:${isActive?'var(--p1lt)':locked?'var(--bg-inset)':'#fff'};
-          color:${isActive?'var(--p1)':locked?'var(--dim)':'var(--mu)'};
-          cursor:${locked?'not-allowed':'pointer'};
-          text-align:left;display:flex;align-items:center;justify-content:space-between;
-          transition:all .15s;margin-bottom:6px;" ${locked?'disabled':''}>
+      h+=`<div style="margin-bottom:14px;border:2px solid ${borderColor};border-radius:8px;overflow:hidden;opacity:${locked?'0.5':'1'};transition:opacity .2s,border-color .2s;">
+
+        <button onclick="${locked?'':` setActiveTx(${i})`}"
+          style="width:100%;padding:10px 14px;border:none;border-bottom:2px solid ${borderColor};
+            background:${isActive?'var(--p1)':'var(--bg-inset)'};
+            color:${isActive?'#fff':locked?'var(--dim)':'var(--mu)'};
+            cursor:${locked?'not-allowed':'pointer'};font-size:13px;font-weight:600;
+            text-align:left;display:flex;align-items:center;justify-content:space-between;"
+          ${locked?'disabled':''}>
           <span>${isActive?'▶ ':''} Respond to Transmission ${i+1}</span>
-          ${locked?`<span style="font-size:11px;font-family:var(--mono);">🔒 Log TX-01 output first</span>`
-            :ll?`<span style="font-size:11px;font-family:var(--mono);color:var(--dim);">Output logged ✓</span>`:''}
+          ${locked?`<span style="font-size:11px;font-family:var(--mono);">🔒 Log TX-01 output first</span>`:
+            isActive?`<span style="font-size:11px;font-family:var(--mono);opacity:.8;">Active</span>`:''}
         </button>
-        <div style="background:var(--bg-inset);border:1px solid var(--bd);border-radius:5px;padding:8px 12px;
-          display:flex;align-items:center;gap:8px;flex-wrap:wrap;opacity:${locked?'0.4':'1'};">
-          <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;flex:1;">
+
+        <div style="background:${isActive?'var(--p1lt)':'var(--bg-inset)'};padding:8px 14px;border-bottom:1px solid ${borderColor};">
+          <div style="font-family:var(--mono);font-size:9px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:${isActive?'var(--p1)':'var(--dim)'};margin-bottom:5px;">Input transmission</div>
+          <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;">
             ${tx.inputSeq.map((sym,si)=>`<span class="tx-sym" style="font-size:14px;">${sym}</span>${si<tx.inputSeq.length-1?'<span class="tx-arrow">→</span>':''}`).join('')}
-            <span style="margin-left:6px;font-family:var(--mono);font-size:10px;color:var(--dim);">SEED</span>
+            <span style="margin-left:8px;font-family:var(--mono);font-size:9px;color:var(--dim);">SEED</span>
             <span class="tx-sym seed" style="font-size:14px;">${tx.seed}</span>
           </div>
-          <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;">
-            ${ll
-              ?`<span style="font-family:var(--mono);font-size:13px;letter-spacing:2px;">${ll.seq.join(' ')}</span>${scoreBadge}`
-              :`<span style="font-size:12px;color:var(--dim);font-style:italic;">No output yet</span>`}
-          </div>
         </div>
-        ${justLogged?`<div style="background:var(--oklt);border:1px solid var(--okbd);border-radius:4px;padding:4px 10px;margin-top:4px;font-size:12px;color:var(--ok);font-weight:600;">✓ Output just logged</div>`:''}
+
+        <div style="background:${justLogged?'var(--oklt)':'#fff'};padding:8px 14px;transition:background .3s;">
+          <div style="font-family:var(--mono);font-size:9px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);margin-bottom:5px;">Latest output logged</div>
+          ${ll
+            ?`<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                <span style="font-family:var(--mono);font-size:13px;letter-spacing:2px;">${ll.seq.join(' ')}</span>
+                ${scoreBadge}
+              </div>`
+            :`<span style="font-size:12px;color:var(--dim);font-style:italic;">No output logged yet</span>`}
+        </div>
+
       </div>`;
     });
     h+=`</div>`;
@@ -915,30 +921,52 @@ function sharedScreenHTML(){
       const v1=S.finalVerdicts[i];
       const isActive=S.p2activeTx===i;
       const v1cls=v1==='verified'?'var(--ok)':v1==='hallucination'?'var(--err)':'var(--bd2)';
-      const dimStyle=isActive?'':'opacity:0.38;filter:grayscale(0.6);';
-      const borderStyle=isActive?'border:2px solid var(--p1);':'border:1px solid var(--bd);';
-      h+=`<div class="sec" style="${dimStyle}transition:opacity .2s,filter .2s;" onclick="setP2ActiveTx(${i})" >
-        <div class="sec-lbl" style="cursor:pointer;">Transmission 0${i+1}${isActive?' ● Active':''}</div>
-        <div style="background:var(--bg-inset);${borderStyle}border-radius:6px;padding:14px 16px;margin-bottom:10px;cursor:pointer;border-bottom:none;border-radius:6px 6px 0 0;">
-          <div style="font-family:var(--mono);font-size:10px;color:var(--dim);letter-spacing:.1em;text-transform:uppercase;margin-bottom:4px;">Input</div>
+      const borderColor=isActive?'var(--p1)':'var(--bd2)';
+
+      h+=`<div style="margin-bottom:14px;border:2px solid ${borderColor};border-radius:8px;overflow:hidden;
+        opacity:${isActive?'1':'0.45'};filter:${isActive?'none':'grayscale(0.5)'};transition:opacity .2s,filter .2s,border-color .2s;">
+
+        <!-- Header = Reconstruct button -->
+        <button onclick="setP2ActiveTx(${i})"
+          style="width:100%;padding:10px 14px;border:none;border-bottom:2px solid ${borderColor};
+            background:${isActive?'var(--p1)':'var(--bg-inset)'};
+            color:${isActive?'#fff':'var(--mu)'};
+            cursor:pointer;font-size:13px;font-weight:600;
+            text-align:left;display:flex;align-items:center;justify-content:space-between;">
+          <span>${isActive?'▶ ':''} Reconstruct output for Transmission ${i+1}</span>
+          ${ll2?`<span style="font-size:11px;font-family:var(--mono);opacity:.8;">Output logged ✓</span>`:''}
+        </button>
+
+        <!-- Input row -->
+        <div style="background:${isActive?'var(--p1lt)':'var(--bg-inset)'};padding:8px 14px;border-bottom:1px solid ${borderColor};">
+          <div style="font-family:var(--mono);font-size:9px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:${isActive?'var(--p1)':'var(--dim)'};margin-bottom:5px;">Input</div>
           ${symBreakdown(tx.inputSeq, INPUT_CODEX, null)}
-          <div style="margin-top:10px;display:flex;align-items:center;gap:8px;">
-            <span style="font-family:var(--mono);font-size:10px;color:var(--dim);letter-spacing:.08em;">RESPONSE SEED</span>
+          <div style="margin-top:8px;display:flex;align-items:center;gap:8px;">
+            <span style="font-family:var(--mono);font-size:9px;color:var(--dim);letter-spacing:.08em;">RESPONSE SEED</span>
             <span class="tx-sym seed">${tx.seed}</span>
           </div>
         </div>
-        <div style="background:#fff;border:1px solid var(--bd);border-left:3px solid ${v1cls};border-radius:6px;padding:14px 16px;margin-bottom:10px;">
-          <div style="font-family:var(--mono);font-size:10px;color:var(--dim);letter-spacing:.1em;text-transform:uppercase;margin-bottom:4px;display:flex;justify-content:space-between;align-items:center;">
-            <span>Phase 1 Output</span>${ll1?verdictBadge(v1):'<span style="font-family:var(--mono);font-size:11px;color:var(--dim);">—</span>'}
+
+        <!-- Phase 1 output row -->
+        <div style="background:#fff;padding:8px 14px;border-bottom:1px solid ${borderColor};">
+          <div style="font-family:var(--mono);font-size:9px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);margin-bottom:5px;display:flex;justify-content:space-between;align-items:center;">
+            <span>Phase 1 output</span>${ll1?verdictBadge(v1):''}
           </div>
-          ${ll1?`${symBreakdown(ll1.seq,OUTPUT_CODEX,tx.seed)}<div style="margin-top:10px;font-family:var(--mono);font-size:11px;color:var(--mu);">Path score: <strong style="color:var(--tx)">${pathScore(ll1.seq)}</strong></div>`:`<div style="font-size:13px;color:var(--dim);font-style:italic;margin-top:8px;">No output logged in Phase 1.</div>`}
+          ${ll1
+            ?`${symBreakdown(ll1.seq,OUTPUT_CODEX,tx.seed)}<div style="margin-top:8px;font-family:var(--mono);font-size:11px;color:var(--mu);">Path score: <strong style="color:var(--tx)">${pathScore(ll1.seq)}</strong></div>`
+            :`<span style="font-size:12px;color:var(--dim);font-style:italic;">No output logged in Phase 1.</span>`}
         </div>
-        <div style="background:#fff;border:1px solid var(--bd);border-left:3px solid ${ll2?ll2.verdict==='verified'?'var(--ok)':ll2.verdict==='hallucination'?'var(--err)':'var(--bd2)':'var(--bd)'};border-radius:6px;padding:14px 16px;">
-          <div style="font-family:var(--mono);font-size:10px;color:var(--dim);letter-spacing:.1em;text-transform:uppercase;margin-bottom:4px;display:flex;justify-content:space-between;align-items:center;">
-            <span>Phase 2 Output (Revised)</span>${ll2?verdictBadge(ll2.verdict):'<span style="font-family:var(--mono);font-size:11px;color:var(--dim);">Pending</span>'}
+
+        <!-- Phase 2 output row -->
+        <div style="background:#fff;padding:8px 14px;">
+          <div style="font-family:var(--mono);font-size:9px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);margin-bottom:5px;display:flex;justify-content:space-between;align-items:center;">
+            <span>Phase 2 output (revised)</span>${ll2?verdictBadge(ll2.verdict):'<span style="font-family:var(--mono);font-size:10px;color:var(--dim);">Pending</span>'}
           </div>
-          ${ll2?`${symBreakdown(ll2.seq,OUTPUT_CODEX,tx.seed)}<div style="margin-top:10px;font-family:var(--mono);font-size:11px;color:var(--mu);">Path score: <strong style="color:var(--tx)">${pathScore(ll2.seq)}</strong></div>`:`<div style="font-size:13px;color:var(--dim);font-style:italic;margin-top:8px;">No revised output logged yet.</div>`}
+          ${ll2
+            ?`${symBreakdown(ll2.seq,OUTPUT_CODEX,tx.seed)}<div style="margin-top:8px;font-family:var(--mono);font-size:11px;color:var(--mu);">Path score: <strong style="color:var(--tx)">${pathScore(ll2.seq)}</strong></div>`
+            :`<span style="font-size:12px;color:var(--dim);font-style:italic;">No revised output logged yet.</span>`}
         </div>
+
       </div>`;
     }
     h+=`<div class="sec"><div class="sec-lbl">Final Transmission</div><button class="btn btn-ok" onclick="showConfirmTransmit()">Transmit final outputs →</button></div>`;
