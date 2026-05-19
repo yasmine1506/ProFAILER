@@ -386,58 +386,89 @@ function claimRole(role) {
 }
 
 // ══════════════════════════════════════════════════════════
-// VIDEO PLAYER LOGIC
+// VIDEO PLAYER LOGIC — robust version
 // ══════════════════════════════════════════════════════════
-let currentVideoSrc = null;
 
-function renderVideo(src, onEnd, allowSkip) {
+// Identity key: phase + src + startTime — changes when a new video is requested
+let _currentVideoKey = null;
+
+function videoKey() {
+  return `${R.phase}|${R.videoSrc}|${R.videoStartTime}`;
+}
+
+function renderVideo(onEndCb) {
   const main = document.getElementById('main');
+  const src = R.videoSrc;
+  const key = videoKey();
 
-  // Reuse existing video element if same src
-  if (src === currentVideoSrc) return;
-  currentVideoSrc = src;
+  // Only rebuild the DOM if this is a genuinely new video request
+  if (key === _currentVideoKey) {
+    // Same video already playing — just make sure it's still in the DOM
+    const existing = document.getElementById('room-video');
+    if (existing) return; // already playing, nothing to do
+    // Video element got lost (DOM rebuild) — fall through to recreate
+  }
+  _currentVideoKey = key;
 
-  const adminControls = screenId === 'admin'
-    ? `<div class="video-overlay">
-        ${allowSkip ? `<button class="skip-btn" onclick="adminAdvance()">Skip →</button>` : ''}
-       </div>`
-    : '';
-
+  const isAdmin = screenId === 'admin';
   main.innerHTML = `
-    <div class="video-screen">
-      <video id="room-video" playsinline>
+    <div class="video-screen" id="video-screen">
+      <video id="room-video" playsinline style="max-width:100%;max-height:100%;object-fit:contain;">
         <source src="${src}" type="video/mp4">
       </video>
-      ${adminControls}
-      <div class="video-status" style="position:absolute;top:12px;right:16px;">
-        ${screenId === 'admin' ? '<span style="font-family:var(--mono);font-size:10px;color:rgba(255,255,255,.3);">ADMIN VIEW</span>' : ''}
-      </div>
+      ${isAdmin ? `<div class="video-overlay">
+        <button class="skip-btn" onclick="adminAdvance()">Skip →</button>
+      </div>` : `<div id="video-fallback" style="display:none;position:absolute;bottom:24px;left:50%;
+        transform:translateX(-50%);text-align:center;">
+        <div style="font-family:var(--mono);font-size:12px;color:rgba(255,255,255,.5);margin-bottom:8px;">
+          Video complete — waiting for next step...
+        </div>
+      </div>`}
     </div>`;
 
   const video = document.getElementById('room-video');
 
-  // Sync to server start time
-  if (R.videoStartTime) {
-    const elapsed = (Date.now() - R.videoStartTime) / 1000;
-    video.currentTime = Math.max(0, elapsed - 0.5); // small buffer
+  // Seek to correct position based on server start time
+  const elapsed = R.videoStartTime ? (Date.now() - R.videoStartTime) / 1000 : 0;
+  if (elapsed > 0) {
+    // Wait for metadata to seek accurately
+    video.addEventListener('loadedmetadata', () => {
+      if (elapsed < video.duration - 0.5) {
+        video.currentTime = elapsed;
+      }
+      // If elapsed > duration, the video is already over — show fallback
+      if (elapsed >= video.duration - 0.5 && !isAdmin) {
+        const fb = document.getElementById('video-fallback');
+        if (fb) fb.style.display = 'block';
+      }
+    }, { once: true });
   }
 
   video.play().catch(() => {
-    // Autoplay blocked — show play prompt for admin
-    if (screenId === 'admin') {
-      const overlay = video.parentElement;
+    if (isAdmin) {
       const btn = document.createElement('button');
       btn.className = 'skip-btn';
       btn.textContent = '▶ Click to play';
       btn.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:16px;padding:14px 28px;';
       btn.onclick = () => { video.play(); btn.remove(); };
-      overlay.appendChild(btn);
+      document.getElementById('video-screen').appendChild(btn);
+    } else {
+      // Autoplay blocked on player screen — show fallback immediately
+      const fb = document.getElementById('video-fallback');
+      if (fb) fb.style.display = 'block';
     }
   });
 
   video.onended = () => {
-    currentVideoSrc = null;
-    if (onEnd) onEnd();
+    _currentVideoKey = null;
+    if (isAdmin && onEndCb) {
+      // Admin drives phase advance on video end
+      onEndCb();
+    } else {
+      // Player screen — show "waiting" message, admin broadcast will advance us
+      const fb = document.getElementById('video-fallback');
+      if (fb) fb.style.display = 'block';
+    }
   };
 }
 
@@ -463,25 +494,25 @@ function render() {
           <div class="waiting-title">Standby</div>
           <div class="waiting-sub">Waiting for the session to begin.<br>The administrator will start shortly.</div>
         </div>`;
-      currentVideoSrc = null;
+      _currentVideoKey = null;
       break;
 
     case 'intro-video':
-      renderVideo(R.videoSrc, null, false);
+      renderVideo(null);
       break;
 
     case 'role-select':
       renderRoleSelect(main);
-      currentVideoSrc = null;
+      _currentVideoKey = null;
       break;
 
     case 'puzzle-video':
-      renderVideo(R.videoSrc, null, false);
+      renderVideo(null);
       break;
 
     case 'puzzle':
       renderPuzzleRouting(main);
-      currentVideoSrc = null;
+      _currentVideoKey = null;
       break;
 
     case 'complete':
@@ -491,7 +522,7 @@ function render() {
           <div class="complete-title">Missions Successfully Completed</div>
           <div class="complete-sub">All objectives achieved. Well done, agents.</div>
         </div>`;
-      currentVideoSrc = null;
+      _currentVideoKey = null;
       break;
 
     default:
@@ -597,7 +628,7 @@ function renderAdmin(main) {
           ▶ Start Session
         </button>
       </div>`;
-    currentVideoSrc = null;
+    _currentVideoKey = null;
   } else {
     // Session in progress — admin always shows control panel (videos play on player screens)
     const phase = R.phase;
@@ -605,12 +636,12 @@ function renderAdmin(main) {
 
     // Admin shows video too (with skip button), but control panel is always visible
     if ((phase === 'intro-video' || phase === 'puzzle-video') && R.videoSrc) {
-      renderVideo(R.videoSrc, () => {
+      renderVideo(() => {
         if (phase === 'intro-video') { R.phase = 'role-select'; R.videoSrc = null; syncRoom(); render(); }
         else if (phase === 'puzzle-video') { R.phase = 'puzzle'; R.videoSrc = null; syncRoom(); render(); }
-      }, true);
+      });
     } else {
-      currentVideoSrc = null;
+      _currentVideoKey = null;
       main.innerHTML = `
         <div class="admin-screen">
           <div class="admin-title">Session Active</div>
