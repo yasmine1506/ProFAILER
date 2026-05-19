@@ -251,9 +251,8 @@ function checkPuzzleWin(puzzleSlot, puzzleState) {
   if (puzzleSlot === 1) won = puzzleState.phase2Complete === true;
   if (puzzleSlot === 2) won = puzzleState.p2result === 'win';
   if (puzzleSlot === 3) {
-    const a = puzzleState.p2Attempts;
-    won = puzzleState.p2done === true && a && a[0]?.results &&
-          Object.values(a[0].results).every(Boolean);
+    // Watch for the flat puzzle3Complete flag (most reliable)
+    won = puzzleState.puzzle3Complete === true;
   }
 
   if (!won) return;

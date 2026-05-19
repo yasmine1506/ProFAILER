@@ -565,6 +565,8 @@ function freshState() {
       hint1:false, hint2:false, hint3:false,
       pOk:false, rOk:false, tOk:false
     },
+    phase1Complete: false,   // flat — P2 detects this transition reliably
+    puzzle3Complete: false,  // flat — room shell watches this directly
     p1History: [],  // [{meta, story, hint}] — synced to P2
     p2sel: { persona:null, aim:null, recipient:null, tone:null, structure:null },
     p2left: 3,
@@ -590,27 +592,19 @@ function syncableState() {
 }
 
 function applyRemoteState(remote) {
-  const wasWinShown = S.g.winShown;
-  const wasPhase2 = S.phase === 2;
-  const wasWon = S.p2done && S.p2Attempts[0]?.results &&
-    Object.values(S.p2Attempts[0].results).every(Boolean);
+  const wasPhase1Complete = S.phase1Complete;
+  const wasPuzzle3Complete = S.puzzle3Complete;
 
   for (const k of Object.keys(remote)) {
     if (!LOCAL_KEYS.has(k)) S[k] = remote[k];
   }
 
-  const isWinShownNow = S.g.winShown;
-  const isPhase2Now = S.phase === 2;
-  const isWon = S.p2done && S.p2Attempts[0]?.results &&
-    Object.values(S.p2Attempts[0].results).every(Boolean);
-
-  // Phase 1 win: g.winShown just became true — show Lock 1 modal on this screen
-  // (P1 shows it directly in generateStory; P2 detects it here)
-  if (!wasWinShown && isWinShownNow && !isPhase2Now && !S.showModal) {
+  // Phase 1 win: phase1Complete just became true — show Lock 1 modal
+  if (!wasPhase1Complete && S.phase1Complete && !S.showModal) {
     showModal('🔓 Lock 1 Disabled!', 'The lockdown has been successfully disabled.', true, goToPhase2);
   }
-  // Phase 2 win: show the exit modal if not already shown
-  else if (!wasWon && isWon && !S.showModal) {
+  // Phase 2 win: puzzle3Complete just became true — show exit modal
+  else if (!wasPuzzle3Complete && S.puzzle3Complete && !S.showModal) {
     showModal('🚪 You\'re out!', 'Lock 2 cracked. You correctly reverse-engineered all five PARTS components. The exit is open!', true, () => {
       window.parent.postMessage('puzzle3-complete', '*');
     });
@@ -673,6 +667,7 @@ function generateStory() {
 
   if (win) {
     S.g.winShown = true;
+    S.phase1Complete = true;
     S.lastGenerated = 'win';
   } else {
     S.lastGenerated = 'generated';
@@ -729,6 +724,7 @@ function submitP2() {
 
   if (allOk) {
     S.p2done = true;
+    S.puzzle3Complete = true;
     syncAndRender();
     showModal('🚪 You\'re out!', 'Lock 2 cracked. You correctly reverse-engineered all five PARTS components. The exit is open!', true, () => {
       window.parent.postMessage('puzzle3-complete', '*');
