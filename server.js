@@ -120,8 +120,14 @@ function broadcast(sender, data) {
 wss.on('connection', (ws, req) => {
   console.log(`Client connected  (total: ${wss.clients.size}) path: ${req.url}`);
 
-  // Send current room state on connect
-  ws.send(JSON.stringify({ type: 'room', room: roomState }));
+  // Delay the initial state send slightly so the client has time to wire up
+  // its onmessage handler before the message arrives (avoids a race condition
+  // where the message is delivered in the same tick as the connection open)
+  setTimeout(() => {
+    if (ws.readyState === 1) {
+      ws.send(JSON.stringify({ type: 'room', room: roomState }));
+    }
+  }, 100);
 
   ws.on('message', raw => {
     let msg;
