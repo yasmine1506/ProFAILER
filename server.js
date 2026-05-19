@@ -143,12 +143,12 @@ wss.on('connection', (ws, req) => {
 
     if (msg.type === 'hello') {
       const slot = msg.puzzle || 'p2';
-      // Send back the current state for the requested slot
-      if (roomState[slot]) {
+      // Always send back the full room object so clients can catch up
+      ws.send(JSON.stringify({ type: 'room', room: roomState }));
+      // Also send the specific slot state if available
+      if (slot !== 'room' && roomState[slot]) {
         ws.send(JSON.stringify({ type: 'state', puzzle: slot, state: roomState[slot] }));
       }
-      // Always send full room on hello
-      ws.send(JSON.stringify({ type: 'room', room: roomState }));
     }
   });
 
