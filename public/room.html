@@ -356,6 +356,7 @@ function advanceToPuzzleVideo(idx) {
 }
 
 function advanceAfterPuzzle() {
+  R.puzzleStartTime = null; // scraps the current puzzle's timer
   const nextIdx = R.currentIdx + 1;
   if (nextIdx < R.puzzles.length) {
     advanceToPuzzleVideo(nextIdx);
@@ -704,21 +705,18 @@ function formatTimer(ms) {
 function updateTimerDisplay() {
   const ms = timerRemaining();
   const text = formatTimer(ms);
-  // Update room shell header timer
   const timerDiv = document.getElementById('room-timer');
   const timerText = document.getElementById('room-timer-text');
   if (timerDiv) timerDiv.style.display = (R.phase === 'puzzle') ? 'flex' : 'none';
   if (timerText) timerText.textContent = text;
-  // Update admin panel timer chip if visible
   const adminEl = document.getElementById('admin-timer');
   if (adminEl) adminEl.textContent = `⏱ ${text}`;
-  // Post timer to puzzle iframe so it can show it in its own header
   const iframe = document.getElementById('puzzle-frame');
-  if (iframe && iframe.contentWindow && R.phase === 'puzzle') {
+  if (iframe && iframe.contentWindow) {
     try {
       iframe.contentWindow.postMessage({
         type: 'timerTick',
-        remaining: ms,
+        remaining: R.phase === 'puzzle' ? ms : null,
         startTime: R.puzzleStartTime
       }, '*');
     } catch(e) {}
