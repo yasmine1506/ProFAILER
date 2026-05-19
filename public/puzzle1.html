@@ -950,14 +950,17 @@ function connectWS(forceReset) {
   ws.onopen = () => {
     setWsDot('connected');
     clearTimeout(wsReconnectTimer);
-    ws.send(JSON.stringify({type:'hello', puzzle:'p1'}));
-    if (forceReset) { S = freshState(); renderAll(); syncState(); }
+    if (forceReset) {
+      S = freshState();
+      syncState();
+    } else {
+      ws.send(JSON.stringify({type:'hello'}));
+    }
   };
   ws.onmessage = (e) => {
     try {
       const msg = JSON.parse(e.data);
-      if (msg.type === 'state' && (!msg.puzzle || msg.puzzle === 'p1')) applyRemoteState(msg.state);
-      if (msg.type === 'room' && msg.room?.p1) applyRemoteState(msg.room.p1);
+      if (msg.type === 'state') applyRemoteState(msg.state);
     } catch(ex) {}
   };
   ws.onclose = () => { setWsDot('error'); scheduleReconnect(); };
@@ -971,7 +974,7 @@ function scheduleReconnect() {
 
 function syncState() {
   if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({type:'state', puzzle:'p1', state: syncableState()}));
+    ws.send(JSON.stringify({type:'state', state: syncableState()}));
   }
 }
 
@@ -1642,7 +1645,10 @@ function renderPhase2() {
   // Re-attach textarea listeners (after innerHTML)
   roundsWrap.querySelectorAll('textarea[data-round]').forEach(ta => {
     const r = parseInt(ta.dataset.round);
+    // Update state on every keystroke but don't re-render (preserves focus)
     ta.addEventListener('input', function() { setJustification(r, this.value); });
+    // Re-render only when player leaves the field (focus already gone, safe to rebuild DOM)
+    ta.addEventListener('blur', function() { renderPhase2(); });
   });
 
   // Partner status panel
@@ -1713,8 +1719,8 @@ function setFeature(round, feature) {
 function setJustification(round, val) {
   if (!S.myTags[round]) S.myTags[round] = {};
   S.myTags[round].justification = val;
-  // don't sync justification — only verdict+feature are synced for matching
-  renderPhase2();
+  // Don't re-render on every keystroke — that destroys the focused textarea.
+  // Justification is local-only (not synced) so no render needed until blur.
 }
 
 function pushMyTags() {

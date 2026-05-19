@@ -599,7 +599,7 @@ function applyRemoteState(remote) {
     Object.values(S.p2Attempts[0].results).every(Boolean);
   // If win condition just became true on this screen, show the local modal
   if (!wasWon && isWon && !S.showModal) {
-    showModal('🎉 Correct!', 'You identified all PARTS settings perfectly!', true, null);
+    showModal('🚪 You\'re out!', 'Lock 2 cracked. You correctly reverse-engineered all five PARTS components. The exit is open!', true, null);
   }
   renderAll();
 }
@@ -686,6 +686,9 @@ function setP2Option(cat, val) {
 
 function submitP2() {
   if (S.p2done) return;
+  // Only the P2 screen should be able to submit
+  if (LOCKED_VIEW && LOCKED_VIEW !== 'p2') return;
+
   const cats = ['persona','aim','recipient','tone','structure'];
   if (cats.some(c => !S.p2sel[c])) {
     showModal('Incomplete', 'Please select one option in each category before submitting.', false, null);
