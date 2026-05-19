@@ -147,11 +147,21 @@ wss.on('connection', (ws, req) => {
       }
     }
 
+    if (msg.type === 'reset-all') {
+      roomState.p1 = null;
+      roomState.p2 = null;
+      roomState.p3 = null;
+      roomState.room = null;
+      console.log('Session reset by admin — all puzzle states cleared');
+      const cleared = JSON.stringify({ type: 'room', room: roomState });
+      wss.clients.forEach(client => {
+        if (client.readyState === 1) client.send(cleared);
+      });
+    }
+
     if (msg.type === 'hello') {
       const slot = msg.puzzle || 'p2';
-      // Always send back the full room object so clients can catch up
       ws.send(JSON.stringify({ type: 'room', room: roomState }));
-      // Also send the specific slot state if available
       if (slot !== 'room' && roomState[slot]) {
         ws.send(JSON.stringify({ type: 'state', puzzle: slot, state: roomState[slot] }));
       }
