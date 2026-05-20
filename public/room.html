@@ -439,13 +439,13 @@ function renderVideo(onEndCb) {
         style="max-width:100%;max-height:100%;object-fit:contain;display:block;">
         <source src="${src}" type="video/mp4">
       </video>
-      <div id="video-overlay-btns" style="position:absolute;inset:0;display:flex;
+      <div id="video-overlay-btns" style="position:absolute;inset:0;
         flex-direction:column;align-items:center;justify-content:center;gap:12px;
-        background:rgba(0,0,0,0.5);display:none;">
-        <button id="play-btn" class="skip-btn" style="font-size:18px;padding:16px 36px;"
+        background:rgba(0,0,0,0.75);display:none;">
+        <button id="play-btn" class="skip-btn" style="font-size:20px;padding:18px 40px;"
           onclick="unlockAndPlay()">▶ Play Video</button>
-        <div style="font-family:var(--mono);font-size:11px;color:rgba(255,255,255,.4);">
-          Click to enable video playback
+        <div style="font-family:var(--mono);font-size:12px;color:rgba(255,255,255,.5);text-align:center;max-width:280px;">
+          Click to start the video
         </div>
       </div>
       ${isAdmin ? `<div class="video-overlay">
@@ -454,14 +454,23 @@ function renderVideo(onEndCb) {
     </div>`;
 
   const video = document.getElementById('room-video');
+  const overlay = document.getElementById('video-overlay-btns');
 
-  // Try autoplay — if blocked, show the play button overlay
+  function showPlayButton() {
+    if (overlay) overlay.style.display = 'flex';
+  }
+
+  // Safety net: if video isn't playing within 2 seconds, show the play button
+  const autoplayTimeout = setTimeout(() => {
+    if (video.paused) showPlayButton();
+  }, 2000);
+
   video.play().then(() => {
+    clearTimeout(autoplayTimeout);
     _autoplayUnlocked = true;
   }).catch(() => {
-    // Autoplay blocked — show the overlay button
-    const overlay = document.getElementById('video-overlay-btns');
-    if (overlay) overlay.style.display = 'flex';
+    clearTimeout(autoplayTimeout);
+    showPlayButton();
   });
 
   video.onended = () => {
@@ -489,7 +498,6 @@ function unlockAndPlay() {
   if (overlay) overlay.style.display = 'none';
   if (video) video.play().catch(() => {});
 }
-
 // ══════════════════════════════════════════════════════════
 // RENDER
 // ══════════════════════════════════════════════════════════
