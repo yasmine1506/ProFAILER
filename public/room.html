@@ -165,8 +165,8 @@ function freshRoomState() {
     currentIdx: -1,
     currentPuzzle: null,
     videoSrc: null,
-    videoStartTime: null,
-    puzzleStartTime: null,  // when current puzzle began — drives 20min timer
+    videoToken: null,      // unique token per video — changes trigger local playback
+    puzzleStartTime: null,
     asset1Screen: null,
     asset2Screen: null,
   };
@@ -313,7 +313,7 @@ function adminStartSession(puzzleOrder) {
   R.puzzles = puzzleOrder;
   R.phase = 'intro-video';
   R.videoSrc = INTRO_VIDEO;
-  R.videoStartTime = Date.now();
+  R.videoToken = Math.random().toString(36).slice(2);
   syncRoom();
   render();
 }
@@ -352,7 +352,7 @@ function advanceToPuzzleVideo(idx) {
   R.currentPuzzle = puzzleNum;
   R.phase = 'puzzle-video';
   R.videoSrc = PUZZLES[puzzleNum].introVideo;
-  R.videoStartTime = Date.now();
+  R.videoToken = Math.random().toString(36).slice(2);
 }
 
 function advanceAfterPuzzle() {
@@ -392,90 +392,102 @@ function claimRole(role) {
 }
 
 // ══════════════════════════════════════════════════════════
-// VIDEO PLAYER LOGIC — robust version
+// VIDEO PLAYER LOGIC — local playback, no sync needed
+// Each screen plays independently from the start.
+// The videoToken in room state is the trigger — when it
+// changes, this screen plays the new video from 0:00.
+// No seeking. No elapsed calculation. No race conditions.
 // ══════════════════════════════════════════════════════════
 
-// Identity key: phase + src + startTime — changes when a new video is requested
-let _currentVideoKey = null;
+let _currentVideoToken = null;
+let _autoplayUnlocked = false; // once user interacts, autoplay works for the session
 
-function videoKey() {
-  return `${R.phase}|${R.videoSrc}|${R.videoStartTime}`;
+// Preload all video files in the background as soon as the page loads.
+// By the time a video is triggered it will already be in the browser cache.
+function preloadVideos() {
+  const allSrcs = [
+    INTRO_VIDEO,
+    ...Object.values(PUZZLES).map(p => p.introVideo)
+  ];
+  allSrcs.forEach(src => {
+    const link = document.createElement('link');
+    link.rel = 'preload';
+    link.as = 'video';
+    link.href = src;
+    document.head.appendChild(link);
+  });
 }
 
 function renderVideo(onEndCb) {
   const main = document.getElementById('main');
   const src = R.videoSrc;
-  const key = videoKey();
-
-  // Only rebuild the DOM if this is a genuinely new video request
-  if (key === _currentVideoKey) {
-    // Same video already playing — just make sure it's still in the DOM
-    const existing = document.getElementById('room-video');
-    if (existing) return; // already playing, nothing to do
-    // Video element got lost (DOM rebuild) — fall through to recreate
-  }
-  _currentVideoKey = key;
-
+  const token = R.videoToken;
   const isAdmin = screenId === 'admin';
+
+  // Same token = same video already playing — don't restart
+  if (token === _currentVideoToken) {
+    const existing = document.getElementById('room-video');
+    if (existing) return;
+    // Element lost (DOM rebuild) — fall through to recreate
+  }
+  _currentVideoToken = token;
+
   main.innerHTML = `
-    <div class="video-screen" id="video-screen">
-      <video id="room-video" playsinline style="max-width:100%;max-height:100%;object-fit:contain;">
+    <div class="video-screen" id="video-screen" style="background:#000;width:100%;height:100%;
+      display:flex;align-items:center;justify-content:center;position:relative;">
+      <video id="room-video" playsinline
+        style="max-width:100%;max-height:100%;object-fit:contain;display:block;">
         <source src="${src}" type="video/mp4">
       </video>
+      <div id="video-overlay-btns" style="position:absolute;inset:0;display:flex;
+        flex-direction:column;align-items:center;justify-content:center;gap:12px;
+        background:rgba(0,0,0,0.5);display:none;">
+        <button id="play-btn" class="skip-btn" style="font-size:18px;padding:16px 36px;"
+          onclick="unlockAndPlay()">▶ Play Video</button>
+        <div style="font-family:var(--mono);font-size:11px;color:rgba(255,255,255,.4);">
+          Click to enable video playback
+        </div>
+      </div>
       ${isAdmin ? `<div class="video-overlay">
         <button class="skip-btn" onclick="adminAdvance()">Skip →</button>
-      </div>` : `<div id="video-fallback" style="display:none;position:absolute;bottom:24px;left:50%;
-        transform:translateX(-50%);text-align:center;">
-        <div style="font-family:var(--mono);font-size:12px;color:rgba(255,255,255,.5);margin-bottom:8px;">
-          Video complete — waiting for next step...
-        </div>
-      </div>`}
+      </div>` : ''}
     </div>`;
 
   const video = document.getElementById('room-video');
 
-  // Seek to correct position based on server start time
-  const elapsed = R.videoStartTime ? (Date.now() - R.videoStartTime) / 1000 : 0;
-  if (elapsed > 0) {
-    // Wait for metadata to seek accurately
-    video.addEventListener('loadedmetadata', () => {
-      if (elapsed < video.duration - 0.5) {
-        video.currentTime = elapsed;
-      }
-      // If elapsed > duration, the video is already over — show fallback
-      if (elapsed >= video.duration - 0.5 && !isAdmin) {
-        const fb = document.getElementById('video-fallback');
-        if (fb) fb.style.display = 'block';
-      }
-    }, { once: true });
-  }
-
-  video.play().catch(() => {
-    if (isAdmin) {
-      const btn = document.createElement('button');
-      btn.className = 'skip-btn';
-      btn.textContent = '▶ Click to play';
-      btn.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:16px;padding:14px 28px;';
-      btn.onclick = () => { video.play(); btn.remove(); };
-      document.getElementById('video-screen').appendChild(btn);
-    } else {
-      // Autoplay blocked on player screen — show fallback immediately
-      const fb = document.getElementById('video-fallback');
-      if (fb) fb.style.display = 'block';
-    }
+  // Try autoplay — if blocked, show the play button overlay
+  video.play().then(() => {
+    _autoplayUnlocked = true;
+  }).catch(() => {
+    // Autoplay blocked — show the overlay button
+    const overlay = document.getElementById('video-overlay-btns');
+    if (overlay) overlay.style.display = 'flex';
   });
 
   video.onended = () => {
-    _currentVideoKey = null;
+    _currentVideoToken = null;
     if (isAdmin && onEndCb) {
-      // Admin drives phase advance on video end
       onEndCb();
     } else {
-      // Player screen — show "waiting" message, admin broadcast will advance us
-      const fb = document.getElementById('video-fallback');
-      if (fb) fb.style.display = 'block';
+      // Player screen — show "waiting" after video ends
+      main.innerHTML = `
+        <div class="video-screen" style="background:#000;display:flex;align-items:center;justify-content:center;">
+          <div style="text-align:center;">
+            <div style="font-family:var(--mono);font-size:13px;color:rgba(255,255,255,.5);margin-bottom:8px;">
+              Stand by for next step...
+            </div>
+          </div>
+        </div>`;
     }
   };
+}
+
+function unlockAndPlay() {
+  _autoplayUnlocked = true;
+  const video = document.getElementById('room-video');
+  const overlay = document.getElementById('video-overlay-btns');
+  if (overlay) overlay.style.display = 'none';
+  if (video) video.play().catch(() => {});
 }
 
 // ══════════════════════════════════════════════════════════
@@ -500,7 +512,7 @@ function render() {
           <div class="waiting-title">Standby</div>
           <div class="waiting-sub">Waiting for the session to begin.<br>The administrator will start shortly.</div>
         </div>`;
-      _currentVideoKey = null;
+      _currentVideoToken = null;
       break;
 
     case 'intro-video':
@@ -509,7 +521,7 @@ function render() {
 
     case 'role-select':
       renderRoleSelect(main);
-      _currentVideoKey = null;
+      _currentVideoToken = null;
       break;
 
     case 'puzzle-video':
@@ -518,7 +530,7 @@ function render() {
 
     case 'puzzle':
       renderPuzzleRouting(main);
-      _currentVideoKey = null;
+      _currentVideoToken = null;
       break;
 
     case 'complete':
@@ -528,7 +540,7 @@ function render() {
           <div class="complete-title">Missions Successfully Completed</div>
           <div class="complete-sub">All objectives achieved. Well done, agents.</div>
         </div>`;
-      _currentVideoKey = null;
+      _currentVideoToken = null;
       break;
 
     default:
@@ -634,7 +646,7 @@ function renderAdmin(main) {
           ▶ Start Session
         </button>
       </div>`;
-    _currentVideoKey = null;
+    _currentVideoToken = null;
   } else {
     // Session in progress — admin always shows control panel (videos play on player screens)
     const phase = R.phase;
@@ -647,7 +659,7 @@ function renderAdmin(main) {
         else if (phase === 'puzzle-video') { R.phase = 'puzzle'; R.videoSrc = null; R.puzzleStartTime = Date.now(); syncRoom(); render(); }
       });
     } else {
-      _currentVideoKey = null;
+      _currentVideoToken = null;
       main.innerHTML = `
         <div class="admin-screen">
           <div class="admin-title">Session Active</div>
@@ -789,6 +801,7 @@ function initView() {
 
 const ready = initView();
 if (ready) {
+  preloadVideos(); // start caching video files immediately
   render();
   if (location.protocol !== 'file:') {
     connectWS();
