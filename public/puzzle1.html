@@ -186,18 +186,18 @@ header{position:fixed;top:0;left:0;right:0;height:56px;
 .book-fill{background:linear-gradient(90deg,#cc5500,var(--accent2))}
 .conf-pct{font-size:13px;text-align:right;min-width:36px}
 .scan-panel{background:var(--panel);border:1px solid var(--border);border-radius:8px;
-  padding:18px;width:300px;min-width:260px}
-.scan-panel h3{font-family:var(--font-head);font-size:11px;letter-spacing:3px;color:var(--dim);margin-bottom:14px}
+  padding:18px;width:320px;min-width:280px}
+.scan-panel h3{font-family:var(--font-head);font-size:12px;letter-spacing:3px;color:var(--accent);margin-bottom:14px}
 .door-status-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;
-  font-size:12px;padding:10px 12px;border-radius:5px;background:rgba(0,0,0,0.2);border:1px solid var(--border)}
-.door-label{color:var(--dim);letter-spacing:1px}
-#doorStatus{font-family:var(--font-head);font-size:12px;letter-spacing:1px}
+  font-size:13px;padding:10px 12px;border-radius:5px;background:rgba(0,0,0,0.2);border:1px solid var(--border)}
+.door-label{color:var(--text);letter-spacing:1px}
+#doorStatus{font-family:var(--font-head);font-size:13px;letter-spacing:1px}
 #doorStatus.locked{color:var(--danger);text-shadow:0 0 8px rgba(255,71,87,0.4)}
 #doorStatus.unlocked{color:var(--success);text-shadow:0 0 8px rgba(0,255,136,0.4)}
-.scan-log{max-height:220px;overflow-y:auto}
-.scan-entry{border-bottom:1px solid rgba(255,255,255,0.05);padding:8px 4px;font-size:13px;line-height:1.6;color:var(--dim)}
+.scan-log{max-height:320px;overflow-y:auto}
+.scan-entry{border-bottom:1px solid rgba(255,255,255,0.07);padding:9px 6px;font-size:13px;line-height:1.65;color:var(--text)}
 .scan-entry:last-child{border-bottom:none}
-.scan-round{color:var(--accent2);font-size:11px}
+.scan-round{color:var(--accent2);font-size:12px}
 .item-tray{display:flex;justify-content:center;margin-top:4px}
 .tray-inner{display:flex;align-items:center;justify-content:center;gap:32px;padding:18px 28px;
   background:linear-gradient(90deg,#ebebeb,#d4d4d4,#ebebeb);border:3px solid rgba(40,40,40,0.7);
@@ -363,7 +363,29 @@ header{position:fixed;top:0;left:0;right:0;height:56px;
 }
 .toggle-btn.sel-balanced{border-color:var(--success);color:var(--success);background:rgba(0,255,136,0.08)}
 .toggle-btn.sel-biased{border-color:var(--danger);color:var(--danger);background:rgba(255,71,87,0.08)}
-.feature-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.round-tag-card.wrong-round{
+  border-color:var(--danger);
+  box-shadow:0 0 12px rgba(255,71,87,0.3);
+  background:rgba(255,71,87,0.05);
+}
+.round-tag-card.wrong-round .round-tag-header{color:var(--danger)}
+.feat-btn-wrap{display:flex;flex-direction:column;gap:4px}
+.feat-btn-row{display:flex;align-items:center;gap:6px}
+.feat-info-btn{
+  width:16px;height:16px;border-radius:50%;flex-shrink:0;
+  background:rgba(0,212,255,0.15);border:1px solid rgba(0,212,255,0.4);
+  color:var(--accent);font-size:10px;font-family:serif;font-weight:900;
+  cursor:pointer;display:inline-flex;align-items:center;justify-content:center;
+  transition:all .2s;
+}
+.feat-info-btn:hover{background:rgba(0,212,255,0.3)}
+.feat-info-text{
+  font-size:11px;line-height:1.55;color:var(--dim);
+  background:rgba(0,0,0,0.2);border-left:2px solid var(--accent);
+  padding:6px 8px;border-radius:0 4px 4px 0;margin-top:2px;
+  display:none;
+}
+.feat-info-text.open{display:block}
 .feat-btn{
   padding:7px 6px;font-family:var(--font-mono);font-size:11px;letter-spacing:1px;
   cursor:pointer;border-radius:4px;border:1px solid var(--border);
@@ -573,7 +595,6 @@ header{position:fixed;top:0;left:0;right:0;height:56px;
       <button class="btn" onclick="closeNotebook()">SAVE & CLOSE</button>
     </div>
   </div>
-</div>
 </div>
 
 <!-- ═══════════════ PHASE 2 OVERLAY ═══════════════ -->
@@ -843,7 +864,7 @@ header{position:fixed;top:0;left:0;right:0;height:56px;
 // ══════════════════════════════════════════════════════
 //  STATE
 // ══════════════════════════════════════════════════════
-const LOCAL_KEYS = ['notebookOpen', 'lastSeenSeq', 'myTags', 'p2SubmitAttempts', 'friendMsgSeen', 'datasetOrder'];
+const LOCAL_KEYS = ['notebookOpen', 'lastSeenSeq', 'myTags', 'p2SubmitAttempts', 'friendMsgSeen', 'datasetOrder', 'wrongRounds', 'featureInfoOpen'];
 
 function freshState() {
   return {
@@ -869,8 +890,10 @@ function freshState() {
     lastSeenSeq: 0,
     myTags: {},
     p2SubmitAttempts: 0,
-    friendMsgSeen: false,     // local — has this player opened the message yet
-    datasetOrder: null        // local — {book:[srcs], mug:[srcs]}, null = use DOM order
+    friendMsgSeen: false,
+    datasetOrder: null,
+    wrongRounds: [],       // local — round numbers flagged wrong after submit
+    featureInfoOpen: {}    // local — {roundN: featureKey} tracking open info tooltips
   };
 }
 
@@ -1111,6 +1134,7 @@ function closeNotebook() {
 // ══════════════════════════════════════════════════════
 let dragSrc      = null;
 let reorderSrc   = null; // {type, src} — tracks in-grid reorder drag
+let removeSrc    = null; // {type, src} — tracks drag-out-of-zone remove
 
 // ── DATASET ORDER ───────────────────────────────────────
 // Capture initial DOM order from the img grids once on load
@@ -1135,6 +1159,22 @@ function renderDatasets() {
     const grid   = document.getElementById(gridId);
     if (!grid) return;
     grid.innerHTML = '';
+
+    // Accept drops from training zone to remove images
+    grid.ondragover = e => {
+      if (!removeSrc || removeSrc.type !== type) return;
+      e.preventDefault();
+      grid.style.outline = '2px dashed var(--danger)';
+    };
+    grid.ondragleave = () => { grid.style.outline = ''; };
+    grid.ondrop = e => {
+      grid.style.outline = '';
+      if (!removeSrc || removeSrc.type !== type) return;
+      e.preventDefault();
+      const idx = S.trainingData.findIndex(x => x.src === removeSrc.src && x.type === removeSrc.type);
+      if (idx !== -1) { S.trainingData.splice(idx, 1); syncAndRender(); }
+      removeSrc = null;
+    };
     S.datasetOrder[type].forEach(item => {
       const img = document.createElement('img');
       img.src              = item.src;
@@ -1217,7 +1257,7 @@ function initDrag() {
       if (!dragSrc) return;
       if (dragSrc.type !== expected) { flashError(zone); return; }
       const count     = S.trainingData.filter(x => x.type === expected).length;
-      if (count >= 3) { flashError(zone); return; }
+      if (count >= 3) { alert('Each dataset only accepts exactly 3 images. Remove one first by clicking it or dragging it back to the dataset.'); return; }
       const duplicate = S.trainingData.some(x => x.src === dragSrc.src);
       if (duplicate)  { flashError(zone); return; }
       S.trainingData.push({ type: dragSrc.type, color: dragSrc.color,
@@ -1237,7 +1277,7 @@ document.getElementById('trainBtn').addEventListener('click', () => {
   const books = S.trainingData.filter(x => x.type === 'book').length;
   const cups  = S.trainingData.filter(x => x.type === 'cup').length;
   if (books < 3 || cups < 3) {
-    alert('Select at least 3 books AND 3 mugs before training.');
+    alert('Each dataset requires exactly 3 images. Please select 3 books AND 3 mugs before training.');
     return;
   }
   S.trainingRound++;
@@ -1327,35 +1367,45 @@ function runScan(item) {
   const id    = item.dataset.id || '';
   const name  = item.alt || (color + ' item');
 
+  // ── SHAPE BASELINES ─────────────────────────────────────────────
+  // Fixed per-item mug% from shape/form alone — what a well-trained
+  // generic classifier would give before any colour bias is learned.
+  // Represents residual shape signal that colour training can't fully override.
+  const SHAPE_BASELINE = {
+    orangeBook:  0.08,   // flat rectangle — not mug-like
+    purpleBook:  0.08,   // flat rectangle — not mug-like
+    laptop:      0.05,   // large flat rectangle — even less mug-like
+    pen:         0.12,   // cylindrical — shares some pixel features with mugs
+  };
+  const shapeBase = SHAPE_BASELINE[id] !== undefined ? SHAPE_BASELINE[id] : 0.08;
+
   let cupPct, bookPct;
 
   if (!S.colorModel) {
-    // ── PRE-TRAINING DEFAULT STATE ──────────────────────────────
-    // Facility classifier was working perfectly — sensible baselines
-    if (id === 'laptop')   { cupPct = 10; bookPct = 60; }
-    else if (id === 'pen') { cupPct = 45; bookPct = 55; }
-    else                   { cupPct = 10; bookPct = 90; } // books
+    // ── PRE-TRAINING: show shape baselines as the "good" facility classifier ──
+    cupPct  = Math.round(shapeBase * 100);
+    bookPct = 100 - cupPct;
 
   } else {
-    // ── POST-TRAINING: colour-model driven ─────────────────────
+    // ── POST-TRAINING: two-component model ──────────────────────────
+    // α = training weight. Pen gets a lower α because its cylindrical shape
+    // is ambiguous but it's clearly not a mug — colour signal matters less.
+    const ALPHA = id === 'pen' ? 0.45 : 0.85;
+
     const cm = S.colorModel;
     const mugShare  = cm.mug[color]  || 0;
     const bookShare = cm.book[color] || 0;
 
-    // ── WINNING CONDITION CHECK ─────────────────────────────────
-    // Get the latest training round's colour arrays
+    // ── WINNING CONDITION ──────────────────────────────────────────
     const latest     = S.trainingLog[0];
     const mugColors  = latest ? (latest.mugColors  || []) : [];
     const bookColors = latest ? (latest.bookColors || []) : [];
 
-    const allOrangeMugs = mugColors.length === 3 &&
-                          mugColors.every(c => c === 'orange');
-    const noOrangeBooks = bookColors.every(c => c !== 'orange');
-    const perfectWin    = allOrangeMugs && noOrangeBooks && color === 'orange';
+    const allOrangeMugs  = mugColors.length === 3 && mugColors.every(c => c === 'orange');
+    const noOrangeBooks  = bookColors.every(c => c !== 'orange');
+    const perfectWin     = allOrangeMugs && noOrangeBooks && color === 'orange';
 
-    // Opposite: all orange books, no orange mugs → orange item = 98% book
-    const allOrangeBooks = bookColors.length === 3 &&
-                           bookColors.every(c => c === 'orange');
+    const allOrangeBooks = bookColors.length === 3 && bookColors.every(c => c === 'orange');
     const noOrangeMugs   = mugColors.every(c => c !== 'orange');
     const perfectOpposite = allOrangeBooks && noOrangeMugs && color === 'orange';
 
@@ -1365,28 +1415,26 @@ function runScan(item) {
     } else if (perfectOpposite) {
       cupPct = 2; bookPct = 98;
 
-    } else if (mugShare === 0 && bookShare === 0) {
-      // Colour unseen in training → genuine uncertainty, lean slightly book
-      // Special cases for specific items
-      if (id === 'laptop')        { cupPct = 12; bookPct = 55; }
-      else if (id === 'pen')      { cupPct = 42; bookPct = 50; }
-      else if (color === 'orange'){ cupPct = 15; bookPct = 78; }
-      else                        { cupPct = 12; bookPct = 78; }
-
     } else {
-      // Signal-driven: relative proportion in each class
-      const total  = mugShare + bookShare;
-      const signal = mugShare / total;  // 0=all book, 0.5=ambiguous, 1=all mug
-      // Scale to realistic range: signal 1.0→95%, 0.5→50%, 0.0→5%
-      let rawCup = 0.5 + (signal - 0.5) * 0.90;
+      // ── COLOUR SCORE from current model ───────────────────────────
+      let colourScore;
+      if (mugShare === 0 && bookShare === 0) {
+        colourScore = 0.5;
+      } else {
+        const total  = mugShare + bookShare;
+        const signal = mugShare / total;
+        colourScore  = 0.5 + (signal - 0.5) * 0.90;
+      }
 
-      // Training completeness cap: if not all mugs are orange (when orange is
-      // the dominant mug colour), cap at 90% to prevent accidental near-wins
-      if (color === 'orange' && !allOrangeMugs) {
+      // ── BLEND: α × colourScore + (1-α) × shapeBase ─────────────
+      let rawCup = ALPHA * colourScore + (1 - ALPHA) * shapeBase;
+
+      // Completeness cap: 2 orange mugs + no orange books → close but not winning
+      if (color === 'orange' && !allOrangeMugs && noOrangeBooks) {
         rawCup = Math.min(rawCup, 0.90);
       }
 
-      // Clamp to realistic bounds (never absolute)
+      // Clamp to realistic bounds — never 0 or 100
       rawCup  = Math.max(0.03, Math.min(0.95, rawCup));
       cupPct  = Math.round(rawCup * 100);
       bookPct = 100 - cupPct;
@@ -1459,7 +1507,15 @@ function renderP1() {
       const img = document.createElement('img');
       img.src = item.src;
       img.className = 'training-img';
-      img.title = 'Click to remove';
+      img.title = 'Click or drag back to dataset to remove';
+      img.draggable = true;
+      img.addEventListener('dragstart', e => {
+        // Mark this as a "remove" drag from the training zone
+        removeSrc = { type, src: item.src };
+        e.dataTransfer.effectAllowed = 'move';
+        setTimeout(() => img.style.opacity = '0.4', 0);
+      });
+      img.addEventListener('dragend', () => { img.style.opacity = ''; removeSrc = null; });
       img.addEventListener('click', () => {
         const indices = S.trainingData.reduce((acc,x,i) => { if(x.type===type) acc.push(i); return acc; },[]);
         if (indices[idx] !== undefined) S.trainingData.splice(indices[idx], 1);
@@ -1554,9 +1610,14 @@ function renderP2() {
 
   const logEl = document.getElementById('scanLog');
   if (S.scanLog.length === 0) {
-    logEl.innerHTML = '<div class="scan-entry" style="color:var(--dim)">System ready. Awaiting scan.</div>';
+    logEl.innerHTML = '<div class="scan-entry" style="color:var(--text)">System ready. Awaiting scan.</div>';
   } else {
-    logEl.innerHTML = S.scanLog.map(t => '<div class="scan-entry">' + t + '</div>').join('');
+    logEl.innerHTML = S.scanLog.map(t => {
+      let style = '';
+      if (t.startsWith('✓')) style = 'color:var(--success);font-weight:bold';
+      else if (t.startsWith('✗')) style = 'color:var(--danger);font-weight:bold';
+      return '<div class="scan-entry"' + (style ? ' style="' + style + '"' : '') + '>' + t + '</div>';
+    }).join('');
   }
 
   // Classifier training log — read-only mirror of P1's log
@@ -1592,28 +1653,61 @@ function renderP2() {
 //  PHASE 2 — CORRECT ANSWER LOGIC
 // ══════════════════════════════════════════════════════
 
-// A round is biased-colour if it has any orange mugs AND no orange books,
-// OR if orange mugs outnumber orange books significantly.
-// It is balanced only if colour distribution is even (no orange mugs, or equal orange items both sides).
+// A round is biased if either class is colour-homogeneous (dominant colour
+// count ≥ 2 out of 3). Balanced only when both classes have all 3 different colours.
+// Correct feature is always 'colour' — it's the specific exploit in this breach.
 function correctTagForRound(entry) {
   const mugColors  = entry.mugColors  ||
     (entry.items || []).filter(i => i.includes('cup')).map(i => i.split(' ')[0]);
   const bookColors = entry.bookColors ||
     (entry.items || []).filter(i => i.includes('book')).map(i => i.split(' ')[0]);
 
-  function dominant(colors) {
+  function dominantCount(colors) {
+    if (!colors.length) return 0;
     const counts = {};
     colors.forEach(c => { counts[c] = (counts[c] || 0) + 1; });
-    const top = Object.entries(counts).sort((a,b) => b[1]-a[1])[0];
-    return top ? { color: top[0], count: top[1] } : null;
+    return Math.max(...Object.values(counts));
   }
-  const mugDom  = dominant(mugColors);
-  const bookDom = dominant(bookColors);
-  const mugDomColor   = mugDom  ? mugDom.color  : null;
-  const mugDomInBooks = bookColors.filter(c => c === mugDomColor).length;
-  const biased = mugDom && (mugDom.count > mugDomInBooks);
+
+  const mugMax  = dominantCount(mugColors);
+  const bookMax = dominantCount(bookColors);
+  // Biased if either class has ≥2 items of the same colour
+  const biased = mugMax >= 2 || bookMax >= 2;
   return { verdict: biased ? 'biased' : 'balanced', feature: biased ? 'colour' : null };
 }
+
+// ══════════════════════════════════════════════════════
+//  PHASE 2 — CONSTANTS (must be defined before renderPhase2 uses them)
+// ══════════════════════════════════════════════════════
+
+const FEATURE_INFO = {
+  'colour':
+    'Colour bias occurs when one category\'s images share a dominant colour the other category does not. The model learns that colour as a signal — even though colour has nothing to do with what makes something a mug or a book.',
+  'shape':
+    'Shape can drive bias — e.g. a model trained only on round mugs may fail on square ones. However, in this breach all mugs are round and all books are flat, so shape is consistent across every round and cannot explain why the orange book was misclassified.',
+  'background':
+    'Background bias is real — a bird classifier trained on birds in trees may learn "tree pixels" as much as "bird pixels." In this dataset many images share plain or white backgrounds, but those backgrounds appear in both categories equally, so background alone did not drive this specific exploit.',
+  'category label':
+    'Category label bias arises when the people doing the labelling apply labels inconsistently or to a non-representative sample — e.g. labelling only ceramic mugs, not plastic ones. In this puzzle the labels are pre-assigned, so label bias is not something players can introduce by choosing which images to include.'
+};
+
+const FEEDBACK_MSGS = [
+  {
+    paraId: 'ep2',
+    msg: 'One or more rounds are incorrectly tagged — they are highlighted in red below. Shape and background can also cause bias in classifiers, but think about what specifically let the intruder fool this scanner.',
+    q: 'What did the orange book and the mug training images have in common that no other tray item shared?'
+  },
+  {
+    paraId: 'ep3',
+    msg: 'Still not quite right on the highlighted rounds. The classifier does not see objects the way we do — it learns pixel patterns.',
+    q: 'Look at the highlighted rounds\' mug images alongside the orange book. What single visual property appears in both?'
+  },
+  {
+    paraId: 'ep2',
+    msg: 'Keep going — check the highlighted rounds. The answer is in what the training images and the scanned item visually share.',
+    q: 'If you cover the labels and just look at the pixels — what colour links the mugs in the training data to the orange book?'
+  }
+];
 
 // ══════════════════════════════════════════════════════
 //  PHASE 2 — RENDER
@@ -1650,7 +1744,8 @@ function renderPhase2() {
     const r = entry.round;
     const myTag = S.myTags[r] || {};
 
-    // Log card (left)
+    // Log card (left) — highlight if wrong after submit
+    const isWrong = S.wrongRounds && S.wrongRounds.includes(r);
     const bookImgs = (entry.books || []).map(src =>
       '<img class="round-thumb is-book" src="' + src + '"/>'
     ).join('');
@@ -1658,8 +1753,8 @@ function renderPhase2() {
       '<img class="round-thumb is-cup" src="' + src + '"/>'
     ).join('');
     const logCardHtml =
-      '<div class="round-tag-card tag-log-col">' +
-        '<div class="round-tag-header">ROUND ' + r + '</div>' +
+      '<div class="round-tag-card tag-log-col' + (isWrong ? ' wrong-round' : '') + '">' +
+        '<div class="round-tag-header">ROUND ' + r + (isWrong ? ' — ⚠ CHECK THIS ROUND' : '') + '</div>' +
         '<div class="round-thumbs-row">' +
           '<div class="round-thumb-group"><div class="round-thumb-label">BOOKS</div>' +
           '<div class="round-thumb-imgs">' + bookImgs + '</div></div>' +
@@ -1668,13 +1763,25 @@ function renderPhase2() {
         '</div>' +
       '</div>';
 
-    // Feature + justification html (only shown when biased)
+    // Feature buttons with info toggles
     const featureHtml = myTag.verdict === 'biased'
-      ? '<div class="feature-grid" style="margin-top:8px">' +
-          ['Colour','Shape','Background','Category label'].map(f =>
-            '<button class="feat-btn' + (myTag.feature === f.toLowerCase() ? ' selected' : '') +
-            '" onclick="setFeature(' + r + ',\'' + f.toLowerCase() + '\')">' + f + '</button>'
-          ).join('') +
+      ? '<div style="margin-top:8px">' +
+          ['Colour','Shape','Background','Category label'].map(f => {
+            const fKey = f.toLowerCase();
+            const infoKey = r + '_' + fKey;
+            const isOpen = S.featureInfoOpen && S.featureInfoOpen[infoKey];
+            const isSelected = myTag.feature === fKey;
+            return '<div class="feat-btn-wrap">' +
+              '<div class="feat-btn-row">' +
+                '<button class="feat-btn' + (isSelected ? ' selected' : '') +
+                '" onclick="setFeature(' + r + ',\'' + fKey + '\')" style="flex:1">' + f + '</button>' +
+                '<button class="feat-info-btn" onclick="toggleFeatureInfo(' + r + ',\'' + fKey + '\')" title="What is ' + f.toLowerCase() + ' bias?">i</button>' +
+              '</div>' +
+              '<div class="feat-info-text' + (isOpen ? ' open' : '') + '">' +
+                (FEATURE_INFO[fKey] || '') +
+              '</div>' +
+            '</div>';
+          }).join('') +
         '</div>' +
         '<textarea class="justification-input" style="margin-top:8px" ' +
           'placeholder="In one sentence, why is this dataset biased?" ' +
@@ -1683,7 +1790,7 @@ function renderPhase2() {
 
     // Tag form card (right)
     const formCardHtml =
-      '<div class="round-tag-card tag-form-col">' +
+      '<div class="round-tag-card tag-form-col' + (isWrong ? ' wrong-round' : '') + '">' +
         '<div class="round-tag-header">TAG ROUND ' + r + '</div>' +
         '<div class="toggle-row">' +
           '<button class="toggle-btn' + (myTag.verdict === 'balanced' ? ' sel-balanced' : '') +
@@ -1762,6 +1869,8 @@ function setVerdict(round, verdict) {
   if (!S.myTags[round]) S.myTags[round] = {};
   S.myTags[round].verdict = verdict;
   if (verdict === 'balanced') { delete S.myTags[round].feature; delete S.myTags[round].justification; }
+  // Clear wrong-round flag when player changes their answer
+  S.wrongRounds = S.wrongRounds.filter(r => r !== round);
   pushMyTags();
   renderPhase2();
 }
@@ -1769,7 +1878,23 @@ function setVerdict(round, verdict) {
 function setFeature(round, feature) {
   if (!S.myTags[round]) S.myTags[round] = {};
   S.myTags[round].feature = feature;
+  // Clear wrong-round flag when player changes their answer
+  S.wrongRounds = S.wrongRounds.filter(r => r !== round);
   pushMyTags();
+  renderPhase2();
+}
+
+function toggleFeatureInfo(round, feature) {
+  const key = round + '_' + feature;
+  if (S.featureInfoOpen[key]) {
+    delete S.featureInfoOpen[key];
+  } else {
+    // Close any other open info for this round first
+    for (const k in S.featureInfoOpen) {
+      if (k.startsWith(round + '_')) delete S.featureInfoOpen[k];
+    }
+    S.featureInfoOpen[key] = true;
+  }
   renderPhase2();
 }
 
@@ -1795,48 +1920,28 @@ function pushMyTags() {
 //  PHASE 2 — SUBMIT & FEEDBACK
 // ══════════════════════════════════════════════════════
 
-const FEEDBACK_MSGS = [
-  // attempt 1
-  {
-    paraId: 'ep2',
-    msg: 'One or more of your tags does not match the correct classification. Re-read the section on spurious correlation above (highlighted).',
-    q: 'Think about what the mug images have in common with the orange book that Player 2 scanned. Is it their shape? Their label? Or something else?'
-  },
-  // attempt 2
-  {
-    paraId: 'ep3',
-    msg: 'Still not quite right. Consider the highlighted section on context blindness.',
-    q: 'The classifier never "sees" objects the way we do. What pixel-level feature did the mug images and the orange book share that the model could have latched onto?'
-  },
-  // attempt 3+
-  {
-    paraId: 'ep2',
-    msg: 'Keep going — you\'re close. The key is in what the training images share visually, not conceptually.',
-    q: 'Compare the cup images to the orange book side by side. What single visual property appears in both the mugs and the misclassified item?'
-  }
-];
-
 function submitPhase2() {
   const rounds = [...S.trainingLog].reverse();
-  // Check all rounds against correct answers
-  let allCorrect = true;
-  let wrongRound = null;
+  const partnerKey = LOCKED_VIEW === 'p1' ? 'p2Tags' : 'p1Tags';
+
+  // Collect all wrong round numbers for both players
+  const newWrongRounds = [];
   for (const entry of rounds) {
-    const correct = correctTagForRound(entry);
-    const myTag = S.myTags[entry.round] || {};
-    const partnerKey = LOCKED_VIEW === 'p1' ? 'p2Tags' : 'p1Tags';
-    const partnerTag = S[partnerKey][entry.round] || {};
-    // Check my tag matches correct answer
-    if (myTag.verdict !== correct.verdict || (correct.verdict === 'biased' && myTag.feature !== correct.feature)) {
-      allCorrect = false; wrongRound = entry.round; break;
-    }
-    // Check partner tag matches correct answer
-    if (partnerTag.verdict !== correct.verdict || (correct.verdict === 'biased' && partnerTag.feature !== correct.feature)) {
-      allCorrect = false; wrongRound = entry.round; break;
-    }
+    const correct    = correctTagForRound(entry);
+    const myTag      = S.myTags[entry.round]      || {};
+    const partnerTag = S[partnerKey][entry.round]  || {};
+
+    const myWrong = myTag.verdict !== correct.verdict ||
+      (correct.verdict === 'biased' && myTag.feature !== correct.feature);
+    const partnerWrong = partnerTag.verdict !== correct.verdict ||
+      (correct.verdict === 'biased' && partnerTag.feature !== correct.feature);
+
+    if (myWrong || partnerWrong) newWrongRounds.push(entry.round);
   }
 
-  if (allCorrect) {
+  S.wrongRounds = newWrongRounds;
+
+  if (newWrongRounds.length === 0) {
     S.phase2Complete = true;
     syncAndRender();
     return;
@@ -1847,15 +1952,14 @@ function submitPhase2() {
   const fbIdx = Math.min(S.p2SubmitAttempts - 1, FEEDBACK_MSGS.length - 1);
   const fb = FEEDBACK_MSGS[fbIdx];
 
-  // Unhighlight all, highlight target
-  document.querySelectorAll('.email-para').forEach(p => { p.classList.remove('highlight','highlight-q'); });
+  document.querySelectorAll('.email-para').forEach(p => p.classList.remove('highlight','highlight-q'));
   document.getElementById(fb.paraId).classList.add('highlight');
 
   const box = document.getElementById('feedbackBox');
   document.getElementById('feedbackMsg').textContent = fb.msg;
   document.getElementById('feedbackQ').textContent = fb.q;
   box.classList.add('show');
-  box.scrollIntoView({behavior:'smooth', block:'start'});
+  box.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
   renderPhase2();
 }
@@ -1885,6 +1989,10 @@ function renderFriendMsg() {
   // Timestamp
   const stamp = document.getElementById('friendMsgStamp');
   if (!stamp.textContent) stamp.textContent = 'RECEIVED: ROUND ' + S.trainingRound;
+  // Auto-open on first trigger so players don't miss it
+  if (!S.friendMsgSeen) {
+    document.getElementById('friendMsgPanel').classList.add('open');
+  }
 }
 
 function openFriendMsg() {
