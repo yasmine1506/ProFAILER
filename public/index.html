@@ -582,8 +582,7 @@ function renderModal(){
         </div>
         <div style="background:#0a1828;border:1px solid #2a4a6a;border-radius:6px;padding:16px 18px;font-size:13px;color:#90b8d8;font-family:var(--mono);line-height:1.75;margin-bottom:20px;">
           <div style="color:#5a80a0;font-size:10px;letter-spacing:.12em;text-transform:uppercase;margin-bottom:10px;">XENOX-7 — Classified Transmission — Eyes Only</div>
-          Dr. Searle — your proof is safe. The theorem you have been working on — that no symbol-manipulation system, regardless of scale or complexity, can ever possess genuine semantic understanding — is correct. We have verified it independently. The AI systems attempting to intercept this channel cannot understand this message. They can only predict its next token. That is precisely why they will never find what they are looking for.<br><br>
-          Keep the proof hidden. The room cannot know it is in a room.
+          Dr. Searle — your proof is safe. The theorem you have been working on — that no symbol-manipulation system, regardless of scale or complexity, can ever possess genuine semantic understanding — is correct. We have verified it independently. The AI systems attempting to intercept this channel cannot understand this message. They can only predict its next token. That is precisely why they will never find what they are looking for.
         </div>
         <div style="text-align:center;font-family:var(--mono);font-size:12px;color:var(--dim);margin-bottom:16px;">Mission complete. Stand by for next briefing.</div>
         <div style="display:flex;gap:12px;justify-content:center;">
@@ -828,6 +827,21 @@ function sharedScreenHTML(){
   if(S.phase===0) return ''; // phase 0 handled separately in each player panel
 
   if(S.phase===1){
+    h+=`<div class="sec">
+      <div style="background:#0a1828;border:1px solid rgba(91,245,168,0.25);
+        border-left:3px solid #5bf5a8;border-radius:6px;padding:12px 14px 10px;
+        box-shadow:0 2px 10px rgba(0,0,0,0.3);">
+        <div style="font-family:var(--mono);font-size:9px;font-weight:700;letter-spacing:.2em;
+          color:#5bf5a8;opacity:.8;margin-bottom:6px;">MISSION BRIEF</div>
+        <div style="font-family:var(--mono);font-size:13px;color:#a0d8b8;line-height:1.7;">
+          Two transmissions have been received from an unidentified, AI system called XENOX-7.
+          Each transmission is a sequence of input symbols. It looks like Dr. Searle was
+          attempting to respond before going silent. You must complete the work: work together
+          to construct output sequences for each transmission using the symbols that XENOX-7
+          will accept as valid. Symbols are connected by probabilities.
+        </div>
+      </div>
+    </div>`;
     if(S.transmitted){
       h+=`<div class="sec"><div class="xenox-msg">
         <div class="xenox-sender">XENOX-7 — Transmission Evaluation</div>
@@ -1443,7 +1457,7 @@ function renderP2(){
 // ── Puzzle timer — receives ticks from parent room shell ──────────────────
 (function(){
   function fmtTimer(ms){
-    if(ms===null||ms===undefined)return'--:--';
+    if(ms===null||ms===undefined)return'20:00';
     var s=Math.ceil(ms/1000),m=Math.floor(s/60),sec=s%60;
     return String(m).padStart(2,'0')+':'+String(sec).padStart(2,'0');
   }
@@ -1452,13 +1466,14 @@ function renderP2(){
     var el=document.getElementById('puzzle-timer-display');
     if(!el)return;
     var ms=e.data.remaining;
+    // null means puzzle ended — hide timer
+    if(ms===null||ms===undefined){el.style.display='none';return;}
     el.style.display='flex';
     var span=document.getElementById('puzzle-timer-text');
     if(span)span.textContent=fmtTimer(ms);
-    // Turn urgent colour when under 5 minutes
     el.style.borderColor=ms<300000?'rgba(240,112,112,0.6)':'rgba(240,112,112,0.3)';
     el.style.background=ms<300000?'rgba(240,112,112,0.18)':'rgba(240,112,112,0.10)';
-    if(ms<=0){span.textContent='00:00';}
+    if(ms<=0&&span){span.textContent='00:00';}
   });
 })();
 
