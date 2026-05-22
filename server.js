@@ -474,42 +474,46 @@ wss.on('connection', (ws, req) => {
         const R = msg.state;
         if (!R) return;
 
-        // Session start: admin just set phase to intro-video (and puzzles array is set)
+        // Session start: admin just set phase to intro-video
         if (R.phase === 'intro-video' && R.puzzles && R.puzzles.length > 0) {
           if (!session) {
             newSession(R.puzzles);
+            // Apply logging toggle that was set before session started
+            if (wss._pendingLoggingEnabled) {
+              session.loggingEnabled = true;
+              console.log('Analytics: Logging ENABLED for new session (pre-set by admin)');
+            }
           }
         }
 
         // Puzzle start: phase just became 'puzzle'
         if (R.phase === 'puzzle' && R.currentPuzzle && R.puzzleStartTime) {
-          if (session && (!session._currentPuzzle || session._currentPuzzle !== R.currentPuzzle)) {
+          if (session && session._currentPuzzle !== R.currentPuzzle) {
             sessionStartPuzzle(R.currentPuzzle, R.puzzleStartTime);
-          }
-        }
-
-        // Session complete
-        if (R.phase === 'complete') {
-          if (session) {
-            // Snapshot the last puzzle if not already captured
-            const lastPuzzle = R.currentPuzzle;
-            if (lastPuzzle && session.puzzleData[lastPuzzle] && !session.puzzleData[lastPuzzle].endTime) {
-              sessionEndPuzzle(lastPuzzle, roomState['p' + lastPuzzle], forceAdvanceFlags[lastPuzzle] || false);
-            }
-            commitSession();
           }
         }
       }
     }
 
     // ── Analytics: puzzle complete signal ───────────────────────────
-    // Sent by room.html when a puzzle win is confirmed
+    // Sent by room.html for every puzzle end (natural win or force-advance).
+    // Commit happens here once all puzzles are done — this is the single
+    // reliable point where puzzle state is fully synced to the server.
     if (msg.type === 'puzzle-complete') {
       const puzzleNum = msg.puzzle;
       const isForced = msg.forced || false;
-      forceAdvanceFlags[puzzleNum] = isForced;
       if (session) {
         sessionEndPuzzle(puzzleNum, roomState['p' + puzzleNum], isForced);
+        console.log(`Analytics: Puzzle ${puzzleNum} ended (forced=${isForced}) — data captured`);
+
+        // Commit once every puzzle in the session has an end time
+        const allDone = session.puzzlesIncluded.every(
+          n => session.puzzleData[n] && session.puzzleData[n].endTime
+        );
+        if (allDone) {
+          console.log('Analytics: All puzzles complete — committing session to Gist');
+          commitSession();
+        }
       }
     }
 
@@ -518,17 +522,17 @@ wss.on('connection', (ws, req) => {
     if (msg.type === 'analytics-p1-justifications') {
       if (session && session.puzzleData[1]) {
         session.puzzleData[1].justifications = msg.justifications || {};
+        console.log('Analytics: Puzzle 1 justifications received');
       }
     }
 
     // ── Analytics: admin logging toggle ─────────────────────────────
     if (msg.type === 'analytics-toggle') {
+      wss._pendingLoggingEnabled = !!msg.enabled;
       if (session) {
         session.loggingEnabled = !!msg.enabled;
-        console.log(`Analytics: Logging ${msg.enabled ? 'ENABLED' : 'DISABLED'} for current session`);
       }
-      // Also store for the next session (in case toggle is set before start)
-      wss._pendingLoggingEnabled = !!msg.enabled;
+      console.log(`Analytics: Logging toggle set to ${msg.enabled ? 'ENABLED' : 'DISABLED'}`);
     }
 
     // ── Reset ────────────────────────────────────────────────────────
