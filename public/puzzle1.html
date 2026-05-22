@@ -1917,6 +1917,34 @@ function pushMyTags() {
 }
 
 // ══════════════════════════════════════════════════════
+//  ANALYTICS — justification text sync
+//  myTags is LOCAL_KEYS (never reaches server), so we
+//  push justifications via a dedicated message at the
+//  moment of final successful phase 2 submission.
+// ══════════════════════════════════════════════════════
+function sendJustificationsToServer() {
+  if (!ws || ws.readyState !== 1) return;
+  // Collect {roundN: {verdict, feature, justification}} for this player
+  const myKey = LOCKED_VIEW === 'p2' ? 'p2' : 'p1';
+  const justifications = {};
+  for (const r in S.myTags) {
+    const t = S.myTags[r];
+    if (t) {
+      justifications[r] = {
+        player: myKey,
+        verdict: t.verdict || null,
+        feature: t.feature || null,
+        justification: t.justification || ''
+      };
+    }
+  }
+  ws.send(JSON.stringify({
+    type: 'analytics-p1-justifications',
+    justifications
+  }));
+}
+
+// ══════════════════════════════════════════════════════
 //  PHASE 2 — SUBMIT & FEEDBACK
 // ══════════════════════════════════════════════════════
 
@@ -1943,6 +1971,9 @@ function submitPhase2() {
 
   if (newWrongRounds.length === 0) {
     S.phase2Complete = true;
+    // Send justification text to server — it's local-only (not in S) so we push
+    // it as a dedicated analytics message right at the moment of final submission
+    sendJustificationsToServer();
     syncAndRender();
     return;
   }

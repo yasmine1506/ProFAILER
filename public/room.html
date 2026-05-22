@@ -98,6 +98,25 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 .chip-active{background:var(--oklt);color:var(--ok);border:1px solid var(--okbd);}
 .chip-done{background:#0a1a10;color:#5bf5a8;border:1px solid #2a5a30;}
 
+/* ── Logging toggle ── */
+.log-toggle-row{display:flex;align-items:center;gap:14px;background:var(--surface);
+  border:1px solid var(--border);border-radius:8px;padding:14px 16px;margin-bottom:8px;}
+.log-toggle-row.active{border-color:var(--okbd);background:#0a1a10;}
+.toggle-switch{position:relative;width:44px;height:24px;flex-shrink:0;}
+.toggle-switch input{opacity:0;width:0;height:0;}
+.toggle-slider{position:absolute;inset:0;background:#2a3858;border-radius:12px;cursor:pointer;transition:all .2s;}
+.toggle-slider:before{content:'';position:absolute;width:18px;height:18px;left:3px;top:3px;
+  background:#8090a8;border-radius:50%;transition:all .2s;}
+.toggle-switch input:checked + .toggle-slider{background:#147a50;}
+.toggle-switch input:checked + .toggle-slider:before{transform:translateX(20px);background:#fff;}
+.log-toggle-text{flex:1;}
+.log-toggle-label{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--text);margin-bottom:2px;}
+.log-toggle-sub{font-size:12px;color:var(--muted);line-height:1.5;}
+.log-badge{font-family:var(--mono);font-size:10px;font-weight:600;padding:2px 8px;border-radius:3px;
+  background:#3a0a0a;color:#f07070;border:1px solid #7a2020;}
+.log-badge.on{background:var(--oklt);color:var(--ok);border-color:var(--okbd);}
+.log-unavailable{font-family:var(--mono);font-size:11px;color:var(--dim);font-style:italic;}
+
 /* ── Waiting / transition screens ── */
 .waiting-screen{width:100%;max-width:560px;padding:24px;text-align:center;}
 .waiting-title{font-family:var(--mono);font-size:24px;font-weight:600;color:var(--text);margin-bottom:12px;}
@@ -158,6 +177,10 @@ const INTRO_VIDEO = '/videos/intro.mp4';
 
 const LOCAL_KEYS = new Set(['screenId','assignedAs']);
 
+// ── Analytics state (admin-only, local — never synced to player screens) ──
+let loggingEnabled = false;    // toggled by admin before session start
+let analyticsAvailable = false; // set to true if server has GIST_ID configured
+
 function freshRoomState() {
   return {
     phase: 'idle',
@@ -198,6 +221,11 @@ function connectWS() {
     let msg; try { msg = JSON.parse(e.data); } catch { return; }
     if (msg.type === 'room-state') { applyRoomState(msg.state); }
     if (msg.type === 'room' && msg.room?.room) { applyRoomState(msg.room.room); }
+    if (msg.type === 'analytics-config') {
+      analyticsAvailable = !!msg.enabled;
+      if (msg.pendingLogging !== undefined) loggingEnabled = msg.pendingLogging;
+      if (screenId === 'admin' && R.phase === 'idle') render();
+    }
   };
 
   ws.onclose = () => {
@@ -309,12 +337,24 @@ function updateBadge(ok) {
 // ADMIN ACTIONS (only admin screen fires these)
 // ══════════════════════════════════════════════════════════
 function adminStartSession(puzzleOrder) {
+  // Send logging state to server before starting
+  if (ws && wsConnected) {
+    ws.send(JSON.stringify({ type: 'analytics-toggle', enabled: loggingEnabled }));
+  }
   R = freshRoomState();
   R.puzzles = puzzleOrder;
   R.phase = 'intro-video';
   R.videoSrc = INTRO_VIDEO;
   R.videoToken = Math.random().toString(36).slice(2);
   syncRoom();
+  render();
+}
+
+function toggleLogging() {
+  loggingEnabled = !loggingEnabled;
+  if (ws && wsConnected) {
+    ws.send(JSON.stringify({ type: 'analytics-toggle', enabled: loggingEnabled }));
+  }
   render();
 }
 
@@ -340,6 +380,10 @@ function adminAdvance() {
     R.videoSrc = null;
     R.puzzleStartTime = Date.now();
   } else if (R.phase === 'puzzle') {
+    // Signal server that this puzzle ended by force-advance
+    if (ws && wsConnected && R.currentPuzzle) {
+      ws.send(JSON.stringify({ type: 'puzzle-complete', puzzle: R.currentPuzzle, forced: true }));
+    }
     advanceAfterPuzzle();
   }
   syncRoom();
@@ -369,6 +413,10 @@ function advanceAfterPuzzle() {
 // Called when a puzzle reports completion (via WebSocket puzzle win detection)
 function onPuzzleComplete() {
   if (R.phase !== 'puzzle') return;
+  // Signal server that this puzzle ended naturally (win)
+  if (ws && wsConnected && R.currentPuzzle) {
+    ws.send(JSON.stringify({ type: 'puzzle-complete', puzzle: R.currentPuzzle, forced: false }));
+  }
   advanceAfterPuzzle();
   syncRoom();
   render();
@@ -653,6 +701,28 @@ function renderAdmin(main) {
         <button class="start-btn" onclick="confirmStart()" ${selected.length ? '' : 'disabled'}>
           ▶ Start Session
         </button>
+
+        <div class="admin-section" style="margin-top:24px;">
+          <div class="admin-label">Research data logging</div>
+          ${analyticsAvailable ? `
+          <div class="log-toggle-row${loggingEnabled ? ' active' : ''}">
+            <label class="toggle-switch">
+              <input type="checkbox" ${loggingEnabled ? 'checked' : ''} onchange="toggleLogging()">
+              <span class="toggle-slider"></span>
+            </label>
+            <div class="log-toggle-text">
+              <div class="log-toggle-label">Log session data</div>
+              <div class="log-toggle-sub">Enable only during real playtesting sessions with participants.<br>Data is written to a private CSV on GitHub Gist.</div>
+            </div>
+            <span class="log-badge${loggingEnabled ? ' on' : ''}">${loggingEnabled ? 'LOGGING ON' : 'LOGGING OFF'}</span>
+          </div>` : `
+          <div class="log-toggle-row">
+            <div class="log-toggle-text">
+              <div class="log-toggle-label" style="color:var(--dim)">Logging unavailable</div>
+              <div class="log-unavailable">Set GIST_ID and GITHUB_TOKEN environment variables on Render to enable session logging.</div>
+            </div>
+          </div>`}
+        </div>
       </div>`;
     _currentVideoToken = null;
   } else {
