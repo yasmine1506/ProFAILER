@@ -47,7 +47,6 @@ const CSV_HEADERS = [
   'session_end',
   'session_duration_sec',
   'puzzles_included',
-  'logging_enabled',
   // Puzzle 1
   'p1_included',
   'p1_start',
@@ -74,14 +73,14 @@ const CSV_HEADERS = [
   'p2_phase1_tx1_attempts',
   'p2_phase1_tx0_log',
   'p2_phase1_tx1_log',
-  'p2_verdict_tx0',
-  'p2_verdict_tx1',
+  'p2_phase1_verdict_tx0',
+  'p2_phase1_verdict_tx1',
   'p2_phase2_tx0_attempts',
   'p2_phase2_tx1_attempts',
   'p2_phase2_tx0_log',
   'p2_phase2_tx1_log',
   'p2_result',
-  'p2_both_verified',
+  'p2_phase2_both_verified',
   // Puzzle 3
   'p3_included',
   'p3_start',
@@ -134,7 +133,6 @@ function buildRow(rec) {
     isoTs(rec.sessionEnd),
     durSec(rec.sessionStart, rec.sessionEnd),
     rec.puzzlesIncluded.join(';'),
-    rec.loggingEnabled ? '1' : '0',
 
     // Puzzle 1
     p1inc() ? '1' : '0',
@@ -146,7 +144,7 @@ function buildRow(rec) {
     p1s.trainingRound ?? '',
     p1s.p2SubmitAttempts ?? '',
     p1s.phase2Complete ? '1' : '0',
-    JSON.stringify(p1s.trainingLog || []),
+    JSON.stringify((p1s.trainingLog || []).map(({ round, items, biasScore }) => ({ round, items, biasScore }))),
     JSON.stringify(p1s.scanLog || []),
     JSON.stringify(p1s.p1Tags || {}),
     JSON.stringify(p1s.p2Tags || {}),
@@ -518,11 +516,27 @@ wss.on('connection', (ws, req) => {
     }
 
     // ── Analytics: justification text from Puzzle 1 ─────────────────
-    // Sent by puzzle1.html at the moment of final phase 2 submission
+    // Sent by puzzle1.html on textarea blur (both players) and on final submission
     if (msg.type === 'analytics-p1-justifications') {
-      if (session && session.puzzleData[1]) {
-        session.puzzleData[1].justifications = msg.justifications || {};
-        console.log('Analytics: Puzzle 1 justifications received');
+      if (session) {
+        if (!session.puzzleData[1]) session.puzzleData[1] = {};
+        const pd = session.puzzleData[1];
+
+        // Merge this player's justifications into the combined object
+        // keyed as {roundN: {p1: {...}, p2: {...}}} so both players' text is preserved
+        if (!pd.justifications) pd.justifications = {};
+        const player = msg.player || 'p1'; // 'p1' or 'p2'
+        for (const r in (msg.justifications || {})) {
+          if (!pd.justifications[r]) pd.justifications[r] = {};
+          pd.justifications[r][player] = msg.justifications[r];
+        }
+
+        // p2SubmitAttempts is local-only in puzzle1 — capture it here
+        if (msg.p2SubmitAttempts !== undefined) {
+          pd.p2SubmitAttempts = msg.p2SubmitAttempts;
+        }
+
+        console.log(`Analytics: Puzzle 1 justifications received from ${player}`);
       }
     }
 
