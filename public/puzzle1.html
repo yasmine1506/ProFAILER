@@ -1812,7 +1812,9 @@ function renderPhase2() {
     // Update state on every keystroke but don't re-render (preserves focus)
     ta.addEventListener('input', function() { setJustification(r, this.value); });
     // Re-render only when player leaves the field (focus already gone, safe to rebuild DOM)
-    ta.addEventListener('blur', function() { renderPhase2(); });
+    // Also send justifications to server on blur so Agent 1's text is captured
+    // independently — not just at the moment of Agent 2's winning submission
+    ta.addEventListener('blur', function() { sendJustificationsToServer(); renderPhase2(); });
   });
 
   // Partner status panel
@@ -1924,14 +1926,12 @@ function pushMyTags() {
 // ══════════════════════════════════════════════════════
 function sendJustificationsToServer() {
   if (!ws || ws.readyState !== 1) return;
-  // Collect {roundN: {verdict, feature, justification}} for this player
   const myKey = LOCKED_VIEW === 'p2' ? 'p2' : 'p1';
   const justifications = {};
   for (const r in S.myTags) {
     const t = S.myTags[r];
     if (t) {
       justifications[r] = {
-        player: myKey,
         verdict: t.verdict || null,
         feature: t.feature || null,
         justification: t.justification || ''
@@ -1940,7 +1940,9 @@ function sendJustificationsToServer() {
   }
   ws.send(JSON.stringify({
     type: 'analytics-p1-justifications',
-    justifications
+    player: myKey,                          // which player this data is from
+    justifications,
+    p2SubmitAttempts: S.p2SubmitAttempts,   // local-only field — send it here
   }));
 }
 
