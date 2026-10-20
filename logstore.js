@@ -54,6 +54,8 @@ class LogStore {
     this.bootstrapped = !this.gistConfigured();   // if no gist, nothing to wait for
     this.gist = { configured: this.gistConfigured(), lastSaved: null, lastError: null, failures: 0, saving: false };
     this._timer = null;
+    this.enabled = true;          // admin 'test mode' switch: when false nothing new is recorded
+    this.testCount = 0;
     try { fs.mkdirSync(this.dataDir, { recursive: true }); } catch (e) { this.log('LogStore: cannot create data dir:', e.message); }
     this._loadDisk();
   }
@@ -89,6 +91,7 @@ class LogStore {
    * then publishes the new session to the gist right away so the number is reserved.
    */
   async startSession(puzzles) {
+    if (!this.enabled) return 'TEST-' + (++this.testCount);       // test run: no number is used, nothing is stored
     if (this.gistConfigured() && this.bootstrapped) {
       try { await this.mergeFromGist(); } catch (e) { this.log('LogStore: could not re-read gist before numbering:', e.message); }
     }
@@ -108,6 +111,8 @@ class LogStore {
       if (!e || typeof e !== 'object' || typeof e.id !== 'string' || !e.id) continue;
       const sid = typeof e.session === 'string' && e.session ? e.session : 'UNASSIGNED';
       const key = puzzle + ':' + e.id;
+      // Test mode: acknowledge (so browsers stop re-sending) but store nothing — except late rows of a real session that already exists
+      if (!this.enabled && !(this.sessions.has(sid) && !this._isEmpty(sid))) { acked.push(e.id); continue; }
       const known = this.idIndex.get(key);
       if (known && known !== sid) {
         // the browser re-labelled this event (it learned the room's session id after a first send): MOVE it, never duplicate it
@@ -132,6 +137,7 @@ class LogStore {
 
   addRoomEvent(sessionId, ev) {
     if (!sessionId || !ev || !ev.event) return false;
+    if (!this.enabled && !(this.sessions.has(sessionId) && !this._isEmpty(sessionId))) return false;
     const s = this._session(sessionId);
     const key = [ev.event, ev.puzzle || '', ev.role || ''].join('|');
     if (s.room.has(key)) return false;                         // first report wins (several screens may report)
@@ -407,7 +413,7 @@ class LogStore {
   }
 
   status() {
-    return { gist: Object.assign({ pending_sessions: this.pending(), bootstrapped: this.bootstrapped }, this.gist),
+    return { logging_enabled: this.enabled, gist: Object.assign({ pending_sessions: this.pending(), bootstrapped: this.bootstrapped }, this.gist),
              sessions: this.listSessions() };
   }
 }

@@ -54,6 +54,17 @@ function handleAdminApi(req, res, url) {
   if (!ADMIN_KEY) return send(503, 'text/plain', 'ADMIN_KEY is not set on the server.');
   if (!adminAuthorized(req, url)) return send(401, 'text/plain', 'Wrong or missing admin key.');
   if (url.pathname === '/admin/status') return send(200, 'application/json', JSON.stringify(logStore.status()));
+  if (url.pathname === '/admin/logging') {
+    const q = url.searchParams.get('enabled');
+    if (q === '0' || q === '1') {
+      if (req.method !== 'POST') return send(405, 'text/plain', 'Use POST');
+      const ph = roomState.room && roomState.room.phase;
+      if (ph === 'role-select' || ph === 'puzzle') return send(409, 'text/plain', 'A session is in progress — finish or reset it before changing logging.');
+      logStore.enabled = q === '1';
+      console.log('Data logging ' + (logStore.enabled ? 'ON' : 'OFF (test mode)') + ' — set by admin');
+    }
+    return send(200, 'application/json', JSON.stringify({ logging_enabled: logStore.enabled }));
+  }
   if (url.pathname === '/admin/save-now') {
     logStore.flush().then(ok => send(200, 'application/json', JSON.stringify({ ok, status: logStore.status() })));
     return;

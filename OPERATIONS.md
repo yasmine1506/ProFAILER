@@ -36,6 +36,7 @@ EVENT_LOG_DICTIONARY.md   Every logged event + the summary columns
 
 Open three screens: `/room#admin` (you), `/room#screen2` (player 1), `/room#screen3` (player 2).
 
+0. **Trying things out yourself?** On the Session Setup screen click the green **● Logging ON** button to switch to 🧪 **test mode** (a yellow banner shows at the top). Test sessions are not saved, numbered or backed up. Switch it back ON before real participants. It can only be changed when no session is running, it needs your admin key entered in 📥 Data, and the server goes back to ON whenever it restarts.
 1. Admin: pick puzzles → **Start Session**. The server numbers it (S1, S2, …). Every log row is tagged with that id.
 2. Players click Agent 1 / Agent 2.
 3. Admin: **▶ Start Puzzle 1**. Puzzle 2 starts automatically when puzzle 1 is completed.
