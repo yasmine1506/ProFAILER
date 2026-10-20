@@ -109,10 +109,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 <div class="app">
   <div class="hdr">
     <div class="hdr-title">DEER — Digital Educational Escape Room <span class="hdr-sub">Room Shell v1.0</span></div>
-    <div id="room-timer" style="display:none;align-items:center;gap:5px;font-family:var(--mono);
-      font-size:14px;font-weight:700;color:#f07070;margin-left:auto;margin-right:10px;
-      background:rgba(240,112,112,0.12);border:1px solid rgba(240,112,112,0.3);
-      padding:3px 10px;border-radius:4px;">⏱ <span id="room-timer-text">20:00</span></div>
+    <div id="test-banner" style="display:none;margin-left:auto;font-family:var(--mono);font-size:12px;font-weight:700;color:#1a1200;background:#ffd166;padding:3px 10px;border-radius:4px;">🧪 TEST MODE — nothing is being saved</div>
     <div class="conn-dot" id="conn-dot"></div>
     <span class="conn-label" id="conn-label">CONNECTING...</span>
   </div>
@@ -147,7 +144,6 @@ function freshRoomState() {
     puzzles: [],
     currentIdx: -1,
     currentPuzzle: null,
-    puzzleStartTime: null,
     sessionId: null,       // assigned by the server when the admin starts a session; tags every log row
     asset1Screen: null,
     asset2Screen: null,
@@ -337,13 +333,11 @@ function startPuzzle(idx) {
   R.currentIdx = idx;
   R.currentPuzzle = R.puzzles[idx];
   R.phase = 'puzzle';
-  R.puzzleStartTime = Date.now();
   roomEvent('puzzle_start', { puzzle: R.currentPuzzle });
 }
 
 function advanceAfterPuzzle(how) {
   roomEvent('puzzle_end', { puzzle: R.currentPuzzle, how: how || 'complete' });
-  R.puzzleStartTime = null; // scraps the current puzzle's timer
   const nextIdx = R.currentIdx + 1;
   if (nextIdx < R.puzzles.length) {
     startPuzzle(nextIdx);
@@ -516,8 +510,13 @@ function renderAdmin(main) {
           </div>
         </div>
 
+        <div class="admin-section">
+          <div class="admin-label">Data logging</div>
+          ${loggingControlHtml()}
+        </div>
+
         <button class="start-btn" onclick="confirmStart()" ${selected.length ? '' : 'disabled'}>
-          ▶ Start Session
+          ${LOGGING === false ? '🧪 Start TEST Session (not saved)' : '▶ Start Session'}
         </button>
       </div>`;
   } else {
@@ -543,7 +542,6 @@ function renderAdmin(main) {
             <div class="status-row">
               <span class="status-chip ${phase === 'complete' ? 'chip-done' : 'chip-active'}">${phaseLabel}</span>
               ${phase === 'puzzle' ? `<span class="status-chip chip-active">Puzzle ${R.currentPuzzle}</span>` : ''}
-              ${phase === 'puzzle' ? `<span class="status-chip" id="admin-timer" style="background:#3a0a0a;color:#f07070;border-color:#7a2020;">⏱ ${formatTimer(timerRemaining())}</span>` : ''}
               <span class="status-chip ${R.asset1Screen ? 'chip-done' : 'chip-pending'}">Agent 1: ${R.asset1Screen || 'not yet'}</span>
               <span class="status-chip ${R.asset2Screen ? 'chip-done' : 'chip-pending'}">Agent 2: ${R.asset2Screen || 'not yet'}</span>
             </div>
@@ -571,48 +569,6 @@ function renderAdmin(main) {
   }
 }
 
-// ══════════════════════════════════════════════════════════
-// PUZZLE TIMER — 20 minutes per puzzle
-// ══════════════════════════════════════════════════════════
-const PUZZLE_DURATION_MS = 20 * 60 * 1000; // 20 minutes
-
-function timerRemaining() {
-  if (!R.puzzleStartTime || R.phase !== 'puzzle') return null;
-  const elapsed = Date.now() - R.puzzleStartTime;
-  return Math.max(0, PUZZLE_DURATION_MS - elapsed);
-}
-
-function formatTimer(ms) {
-  if (ms === null) return '--:--';
-  const totalSec = Math.ceil(ms / 1000);
-  const min = Math.floor(totalSec / 60);
-  const sec = totalSec % 60;
-  return `${String(min).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
-}
-
-function updateTimerDisplay() {
-  const ms = timerRemaining();
-  const text = formatTimer(ms);
-  const timerDiv = document.getElementById('room-timer');
-  const timerText = document.getElementById('room-timer-text');
-  if (timerDiv) timerDiv.style.display = (R.phase === 'puzzle') ? 'flex' : 'none';
-  if (timerText) timerText.textContent = text;
-  const adminEl = document.getElementById('admin-timer');
-  if (adminEl) adminEl.textContent = `⏱ ${text}`;
-  const iframe = document.getElementById('puzzle-frame');
-  if (iframe && iframe.contentWindow) {
-    try {
-      iframe.contentWindow.postMessage({
-        type: 'timerTick',
-        remaining: R.phase === 'puzzle' ? ms : null,
-        startTime: R.puzzleStartTime
-      }, '*');
-    } catch(e) {}
-  }
-}
-
-// Tick every second
-setInterval(updateTimerDisplay, 1000);
 const selectedPuzzles = [];
 function togglePuzzle(n) {
   const idx = selectedPuzzles.indexOf(n);
@@ -633,6 +589,32 @@ function confirmStart() {
 // ADMIN DATA PANEL — download session data (CSV) from the server
 // ══════════════════════════════════════════════════════════
 let _dataOpen = false, _dataAutoOpened = false;
+
+// ── Data logging on/off (test mode). null = unknown (no admin key yet / server unreachable) ──
+let LOGGING = null;
+function loggingControlHtml() {
+  if (LOGGING === null) return `<div style="font-family:var(--mono);font-size:12px;color:var(--dim);line-height:1.6">Enter your admin key in <b>📥 Data</b> (bottom left) to control logging.</div>`;
+  const on = LOGGING;
+  return `<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+    <button onclick="toggleLogging()" style="padding:10px 16px;border-radius:8px;border:1px solid ${on ? 'var(--okbd)' : '#a07a00'};background:${on ? '#0d2b1d' : '#3a2e00'};color:${on ? '#9ff0c8' : '#ffd166'};font-family:var(--mono);font-size:13px;font-weight:700;cursor:pointer">${on ? '● Logging ON — click to switch to test mode' : '🧪 Logging OFF (test mode) — click to switch back ON'}</button>
+  </div>
+  <div style="font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:8px;line-height:1.6">${on ? 'Everything players do is saved and backed up. Switch to test mode before you try things out yourself.' : 'Test sessions are not saved, numbered or backed up. Remember to switch logging back ON before real participants.'}</div>`;
+}
+function setLoggingState(v) {
+  const next = (v === true || v === false) ? v : null;
+  const changed = next !== LOGGING;
+  LOGGING = next;
+  const b = document.getElementById('test-banner');
+  if (b) b.style.display = (screenId === 'admin' && LOGGING === false) ? 'block' : 'none';
+  if (changed && screenId === 'admin' && R.phase === 'idle') render();
+}
+async function toggleLogging() {
+  try {
+    const r = await fetch('/admin/logging?enabled=' + (LOGGING ? '0' : '1'), { method: 'POST', headers: { Authorization: 'Bearer ' + adminKey() }, cache: 'no-store' });
+    if (!r.ok) throw new Error(r.status === 409 ? await r.text() : r.status === 401 ? 'Wrong admin key' : 'Server error ' + r.status);
+    setLoggingState((await r.json()).logging_enabled);
+  } catch (e) { alert('Could not change logging: ' + e.message); }
+}
 function adminKey() { try { return localStorage.getItem('deer_admin_key') || ''; } catch { return ''; } }
 async function adminFetch(path) {
   const r = await fetch(path, { headers: { Authorization: 'Bearer ' + adminKey() }, cache: 'no-store' });
@@ -674,9 +656,10 @@ async function refreshDataPanel(force) {
   if (!_dataOpen && !force) { /* still poll quietly for the warning dot */ }
   const dot = document.getElementById('data-dot');
   const keyBox = `<div style="display:flex;gap:6px;margin:8px 0 12px;"><input id="data-key" type="password" placeholder="Admin key" value="${adminKey().replace(/"/g,'')}" style="flex:1;background:#0a0c18;color:#fff;border:1px solid #3a4a78;border-radius:5px;padding:7px 9px;font-family:var(--mono);font-size:12px;"><button onclick="saveAdminKey()" style="background:#1a5fa8;color:#fff;border:none;border-radius:5px;padding:7px 12px;font-family:var(--mono);cursor:pointer;">Save key</button></div>`;
-  if (!adminKey()) { p.innerHTML = '<b>Session data</b><div style="color:#9aa8c8;margin-top:6px">Enter the admin key (the ADMIN_KEY set on Render) to download data.</div>' + keyBox; if (dot) dot.style.display = 'inline'; return; }
+  if (!adminKey()) { setLoggingState(null); p.innerHTML = '<b>Session data</b><div style="color:#9aa8c8;margin-top:6px">Enter the admin key (the ADMIN_KEY set on Render) to download data.</div>' + keyBox; if (dot) dot.style.display = 'inline'; return; }
   try {
     const st = await (await adminFetch('/admin/status')).json();
+    setLoggingState(st.logging_enabled);
     const g = st.gist;
     const gistLine = !g.configured ? '<span style="color:#f07070">⚠ Gist backup NOT configured — data is only on this server</span>'
       : g.lastError ? `<span style="color:#f07070">⚠ Gist save failing: ${esc(g.lastError)} (retrying; ${g.pending_sessions} session(s) waiting)</span>`
@@ -691,7 +674,7 @@ async function refreshDataPanel(force) {
       <td style="padding:5px 6px;white-space:nowrap"><button class="dl" onclick="adminDownload('type=events&session=${encodeURIComponent(s.id)}')">events</button> <button class="dl" onclick="adminDownload('type=summary&session=${encodeURIComponent(s.id)}')">summary</button></td></tr>`).join('');
     p.innerHTML = `<style>#data-panel .dl{background:#1a2a4a;color:#cfe3ff;border:1px solid #3a4a78;border-radius:4px;padding:3px 8px;font-family:var(--mono);font-size:11px;cursor:pointer}#data-panel .dl:hover{background:#25407a}</style>
       <div style="display:flex;justify-content:space-between;align-items:center"><b>Session data</b><button class="dl" onclick="toggleDataPanel()">close</button></div>
-      <div style="margin:8px 0 12px">${gistLine}</div>
+      <div style="margin:8px 0 12px">${st.logging_enabled === false ? '<span style="color:#ffd166">🧪 Test mode — new sessions are NOT being saved</span><br>' : ''}${gistLine}</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
         <button class="dl" onclick="adminDownload('type=events&session=all')">All sessions — events (both puzzles)</button>
         <button class="dl" onclick="adminDownload('type=summary&session=all')">All sessions — summary</button>
@@ -702,6 +685,7 @@ async function refreshDataPanel(force) {
     if (R.phase === 'complete' && !_dataAutoOpened) { _dataAutoOpened = true; if (!_dataOpen) toggleDataPanel(); }
   } catch (e) {
     if (dot) dot.style.display = 'inline';
+    setLoggingState(null);
     p.innerHTML = `<b>Session data</b><div style="color:#f07070;margin-top:6px">${esc(e.message)}</div>` + keyBox;
   }
 }
