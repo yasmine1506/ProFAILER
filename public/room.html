@@ -31,16 +31,6 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 /* ── Main content ── */
 .main{flex:1;overflow:hidden;display:flex;align-items:center;justify-content:center;}
 
-/* ── Video screen ── */
-.video-screen{width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#000;position:relative;}
-.video-screen video{max-width:100%;max-height:100%;object-fit:contain;}
-.video-overlay{position:absolute;bottom:24px;left:50%;transform:translateX(-50%);display:flex;gap:12px;}
-.skip-btn{background:rgba(0,0,0,.6);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.7);
-  font-family:var(--mono);font-size:12px;padding:8px 20px;border-radius:4px;cursor:pointer;
-  backdrop-filter:blur(4px);transition:all .2s;}
-.skip-btn:hover{background:rgba(255,255,255,.15);color:#fff;}
-.video-status{font-family:var(--mono);font-size:11px;color:var(--muted);text-align:center;padding:12px 0;}
-
 /* ── Role selection ── */
 .role-screen{width:100%;max-width:700px;padding:24px;}
 .role-title{font-family:var(--mono);font-size:22px;font-weight:600;color:var(--text);margin-bottom:6px;letter-spacing:.04em;}
@@ -134,11 +124,9 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 // PUZZLE METADATA
 // ══════════════════════════════════════════════════════════
 const PUZZLES = {
-  1: { name:'Puzzle 1', url:'/puzzle1', introVideo:'/videos/puzzle1-intro.mp4' },
-  2: { name:'The Xenolinguist\'s Dilemma', url:'/',      introVideo:'/videos/puzzle2-intro.mp4' },
-  3: { name:'PARTS Puzzle',                url:'/puzzle3', introVideo:'/videos/puzzle3-intro.mp4' },
+  1: { name:'Puzzle 1', url:'/puzzle1' },
+  2: { name:'The Xenolinguist\'s Dilemma', url:'/' },
 };
-const INTRO_VIDEO = '/videos/intro.mp4';
 
 // ══════════════════════════════════════════════════════════
 // ROOM STATE
@@ -146,17 +134,12 @@ const INTRO_VIDEO = '/videos/intro.mp4';
 /*
   phase:
     'idle'          — admin hasn't started yet
-    'intro-video'   — playing the main intro video
     'role-select'   — players choose Agent 1 / Agent 2
-    'puzzle-video'  — playing a puzzle intro video
     'puzzle'        — puzzle is active
     'complete'      — all puzzles done
 
   screenId: 'admin' | 'screen2' | 'screen3'
-  assignedAs: null | 'p1' | 'p2'   (set per-screen, local)
 */
-
-const LOCAL_KEYS = new Set(['screenId','assignedAs']);
 
 function freshRoomState() {
   return {
@@ -164,9 +147,8 @@ function freshRoomState() {
     puzzles: [],
     currentIdx: -1,
     currentPuzzle: null,
-    videoSrc: null,
-    videoToken: null,      // unique token per video — changes trigger local playback
     puzzleStartTime: null,
+    sessionId: null,       // assigned by the server when the admin starts a session; tags every log row
     asset1Screen: null,
     asset2Screen: null,
   };
@@ -174,7 +156,6 @@ function freshRoomState() {
 
 let R = freshRoomState();
 let screenId = null;
-let assignedAs = null; // 'p1' or 'p2' or null
 
 // ══════════════════════════════════════════════════════════
 // WEBSOCKET
@@ -196,6 +177,13 @@ function connectWS() {
 
   ws.onmessage = (e) => {
     let msg; try { msg = JSON.parse(e.data); } catch { return; }
+    // Server answers the admin's Start Session with the new session id (used to tag all data)
+    if (msg.type === 'session-id') { onSessionId(msg); return; }
+    // Watch puzzle state changes for win conditions (runs on every screen)
+    if (msg.type === 'state' && msg.puzzle && msg.puzzle !== 'room') {
+      const slot = parseInt(msg.puzzle.replace('p',''));
+      if (!isNaN(slot)) checkPuzzleWin(slot, msg.state);
+    }
     if (msg.type === 'room-state') { applyRoomState(msg.state); }
     if (msg.type === 'room' && msg.room?.room) { applyRoomState(msg.room.room); }
   };
@@ -209,7 +197,7 @@ function connectWS() {
 }
 
 // For player screens: poll the server for current room state every 3 seconds
-// until we receive a non-idle state. This guarantees the video starts even if
+// until we receive a non-idle state. This guarantees the session starts even if
 // the initial hello response arrived before the session was started.
 function startStatePoll() {
   if (screenId === 'admin') return;
@@ -243,6 +231,7 @@ function applyRoomState(remote) {
   if (!remote) return; // null = no session started yet, keep idle
   R = { ...freshRoomState(), ...remote };
   render();
+  if (screenId === 'admin' && R.phase === 'complete' && typeof refreshDataPanel === 'function') setTimeout(() => refreshDataPanel(true), 1500);
 }
 
 const _winListenerRegistered = {};
@@ -255,10 +244,6 @@ function checkPuzzleWin(puzzleSlot, puzzleState) {
   let won = false;
   if (puzzleSlot === 1) won = puzzleState.phase2Complete === true;
   if (puzzleSlot === 2) won = puzzleState.p2result === 'win';
-  if (puzzleSlot === 3) {
-    // Watch for the flat puzzle3Complete flag (most reliable)
-    won = puzzleState.puzzle3Complete === true;
-  }
 
   if (!won) return;
 
@@ -277,14 +262,6 @@ function checkPuzzleWin(puzzleSlot, puzzleState) {
       if (e.data === 'puzzle2-complete') {
         window.removeEventListener('message', handler);
         if (R.phase === 'puzzle' && R.currentPuzzle === 2) onPuzzleComplete();
-      }
-    };
-    window.addEventListener('message', handler);
-  } else if (puzzleSlot === 3) {
-    const handler = (e) => {
-      if (e.data === 'puzzle3-complete') {
-        window.removeEventListener('message', handler);
-        if (R.phase === 'puzzle' && R.currentPuzzle === 3) onPuzzleComplete();
       }
     };
     window.addEventListener('message', handler);
@@ -308,17 +285,33 @@ function updateBadge(ok) {
 // ══════════════════════════════════════════════════════════
 // ADMIN ACTIONS (only admin screen fires these)
 // ══════════════════════════════════════════════════════════
+let _pendingSession = null;
 function adminStartSession(puzzleOrder) {
-  R = freshRoomState();
-  R.puzzles = puzzleOrder;
-  R.phase = 'intro-video';
-  R.videoSrc = INTRO_VIDEO;
-  R.videoToken = Math.random().toString(36).slice(2);
-  syncRoom();
-  render();
+  const fresh = freshRoomState();
+  fresh.puzzles = puzzleOrder;
+  fresh.phase = 'role-select';
+  const begin = (id) => { R = fresh; R.sessionId = id; _pendingSession = null; syncRoom(); render(); };
+  if (ws && wsConnected) {
+    // the server numbers the session (S1, S2, …) and records it before anything starts
+    const reqId = Math.random().toString(36).slice(2);
+    _pendingSession = { reqId, begin };
+    ws.send(JSON.stringify({ type: 'session-start', puzzles: puzzleOrder, reqId }));
+    setTimeout(() => { if (_pendingSession && _pendingSession.reqId === reqId) begin('LOCAL-' + Date.now().toString(36)); }, 4000);
+  } else {
+    begin('LOCAL-' + Date.now().toString(36));
+  }
+}
+function onSessionId(msg) {
+  if (_pendingSession && _pendingSession.reqId === msg.reqId) _pendingSession.begin(msg.id);
+}
+// Tell the server about session milestones (server uses its own clock; duplicates from several screens are ignored)
+function roomEvent(event, extra) {
+  if (!R.sessionId || !ws || !wsConnected) return;
+  ws.send(JSON.stringify(Object.assign({ type: 'room-event', session: R.sessionId, event }, extra || {})));
 }
 
 function adminReset() {
+  selectedPuzzles.length = 0;      // otherwise the toggles look empty but still remember the last selection
   R = freshRoomState();
   clearWinListeners();
   // Clear puzzle states too so next session starts fresh
@@ -330,46 +323,40 @@ function adminReset() {
 }
 
 function adminAdvance() {
-  if (R.phase === 'intro-video') {
-    R.phase = 'role-select';
-    R.videoSrc = null;
-  } else if (R.phase === 'role-select') {
-    advanceToPuzzleVideo(0);
-  } else if (R.phase === 'puzzle-video') {
-    R.phase = 'puzzle';
-    R.videoSrc = null;
-    R.puzzleStartTime = Date.now();
+  if (R.phase === 'role-select') {
+    if (!(R.asset1Screen && R.asset2Screen)) return;     // both agents must have picked a role first
+    startPuzzle(0);
   } else if (R.phase === 'puzzle') {
-    advanceAfterPuzzle();
+    advanceAfterPuzzle('force');      // admin pressed Force advance during a puzzle
   }
   syncRoom();
   render();
 }
 
-function advanceToPuzzleVideo(idx) {
-  const puzzleNum = R.puzzles[idx];
+function startPuzzle(idx) {
   R.currentIdx = idx;
-  R.currentPuzzle = puzzleNum;
-  R.phase = 'puzzle-video';
-  R.videoSrc = PUZZLES[puzzleNum].introVideo;
-  R.videoToken = Math.random().toString(36).slice(2);
+  R.currentPuzzle = R.puzzles[idx];
+  R.phase = 'puzzle';
+  R.puzzleStartTime = Date.now();
+  roomEvent('puzzle_start', { puzzle: R.currentPuzzle });
 }
 
-function advanceAfterPuzzle() {
+function advanceAfterPuzzle(how) {
+  roomEvent('puzzle_end', { puzzle: R.currentPuzzle, how: how || 'complete' });
   R.puzzleStartTime = null; // scraps the current puzzle's timer
   const nextIdx = R.currentIdx + 1;
   if (nextIdx < R.puzzles.length) {
-    advanceToPuzzleVideo(nextIdx);
+    startPuzzle(nextIdx);
   } else {
     R.phase = 'complete';
-    R.videoSrc = null;
+    roomEvent('session_complete');
   }
 }
 
 // Called when a puzzle reports completion (via WebSocket puzzle win detection)
 function onPuzzleComplete() {
   if (R.phase !== 'puzzle') return;
-  advanceAfterPuzzle();
+  advanceAfterPuzzle('complete');
   syncRoom();
   render();
 }
@@ -378,126 +365,18 @@ function onPuzzleComplete() {
 // PLAYER ACTIONS
 // ══════════════════════════════════════════════════════════
 function claimRole(role) {
+  roomEvent('role_claim', { role });
   if (role === 'p1') {
     if (R.asset1Screen && R.asset1Screen !== screenId) return;
     R.asset1Screen = screenId;
-    assignedAs = 'p1';
   } else {
     if (R.asset2Screen && R.asset2Screen !== screenId) return;
     R.asset2Screen = screenId;
-    assignedAs = 'p2';
   }
   syncRoom();
   render();
 }
 
-// ══════════════════════════════════════════════════════════
-// VIDEO PLAYER LOGIC — local playback, no sync needed
-// Each screen plays independently from the start.
-// The videoToken in room state is the trigger — when it
-// changes, this screen plays the new video from 0:00.
-// No seeking. No elapsed calculation. No race conditions.
-// ══════════════════════════════════════════════════════════
-
-let _currentVideoToken = null;
-let _autoplayUnlocked = false; // once user interacts, autoplay works for the session
-
-// Preload all video files in the background as soon as the page loads.
-// By the time a video is triggered it will already be in the browser cache.
-function preloadVideos() {
-  const allSrcs = [
-    INTRO_VIDEO,
-    ...Object.values(PUZZLES).map(p => p.introVideo)
-  ];
-  allSrcs.forEach(src => {
-    const link = document.createElement('link');
-    link.rel = 'preload';
-    link.as = 'video';
-    link.href = src;
-    document.head.appendChild(link);
-  });
-}
-
-function renderVideo(onEndCb) {
-  const main = document.getElementById('main');
-  const src = R.videoSrc;
-  const token = R.videoToken;
-  const isAdmin = screenId === 'admin';
-
-  // Same token = same video already playing — don't restart
-  if (token === _currentVideoToken) {
-    const existing = document.getElementById('room-video');
-    if (existing) return;
-    // Element lost (DOM rebuild) — fall through to recreate
-  }
-  _currentVideoToken = token;
-
-  main.innerHTML = `
-    <div class="video-screen" id="video-screen" style="background:#000;width:100%;height:100%;
-      display:flex;align-items:center;justify-content:center;position:relative;">
-      <video id="room-video" playsinline
-        style="max-width:100%;max-height:100%;object-fit:contain;display:block;">
-        <source src="${src}" type="video/mp4">
-      </video>
-      <div id="video-overlay-btns" style="position:absolute;inset:0;
-        flex-direction:column;align-items:center;justify-content:center;gap:12px;
-        background:rgba(0,0,0,0.75);display:none;">
-        <button id="play-btn" class="skip-btn" style="font-size:20px;padding:18px 40px;"
-          onclick="unlockAndPlay()">▶ Play Video</button>
-        <div style="font-family:var(--mono);font-size:12px;color:rgba(255,255,255,.5);text-align:center;max-width:280px;">
-          Click to start the video
-        </div>
-      </div>
-      ${isAdmin ? `<div class="video-overlay">
-        <button class="skip-btn" onclick="adminAdvance()">Skip →</button>
-      </div>` : ''}
-    </div>`;
-
-  const video = document.getElementById('room-video');
-  const overlay = document.getElementById('video-overlay-btns');
-
-  function showPlayButton() {
-    if (overlay) overlay.style.display = 'flex';
-  }
-
-  // Safety net: if video isn't playing within 2 seconds, show the play button
-  const autoplayTimeout = setTimeout(() => {
-    if (video.paused) showPlayButton();
-  }, 2000);
-
-  video.play().then(() => {
-    clearTimeout(autoplayTimeout);
-    _autoplayUnlocked = true;
-  }).catch(() => {
-    clearTimeout(autoplayTimeout);
-    showPlayButton();
-  });
-
-  video.onended = () => {
-    _currentVideoToken = null;
-    if (isAdmin && onEndCb) {
-      onEndCb();
-    } else {
-      // Player screen — show "waiting" after video ends
-      main.innerHTML = `
-        <div class="video-screen" style="background:#000;display:flex;align-items:center;justify-content:center;">
-          <div style="text-align:center;">
-            <div style="font-family:var(--mono);font-size:13px;color:rgba(255,255,255,.5);margin-bottom:8px;">
-              Stand by for next step...
-            </div>
-          </div>
-        </div>`;
-    }
-  };
-}
-
-function unlockAndPlay() {
-  _autoplayUnlocked = true;
-  const video = document.getElementById('room-video');
-  const overlay = document.getElementById('video-overlay-btns');
-  if (overlay) overlay.style.display = 'none';
-  if (video) video.play().catch(() => {});
-}
 // ══════════════════════════════════════════════════════════
 // RENDER
 // ══════════════════════════════════════════════════════════
@@ -520,25 +399,14 @@ function render() {
           <div class="waiting-title">Standby</div>
           <div class="waiting-sub">Waiting for the session to begin.<br>The administrator will start shortly.</div>
         </div>`;
-      _currentVideoToken = null;
-      break;
-
-    case 'intro-video':
-      renderVideo(null);
       break;
 
     case 'role-select':
       renderRoleSelect(main);
-      _currentVideoToken = null;
-      break;
-
-    case 'puzzle-video':
-      renderVideo(null);
       break;
 
     case 'puzzle':
       renderPuzzleRouting(main);
-      _currentVideoToken = null;
       break;
 
     case 'complete':
@@ -548,7 +416,6 @@ function render() {
           <div class="complete-title">Missions Successfully Completed</div>
           <div class="complete-sub">All objectives achieved. Well done, agents.</div>
         </div>`;
-      _currentVideoToken = null;
       break;
 
     default:
@@ -558,7 +425,6 @@ function render() {
 
 function renderRoleSelect(main) {
   const myRole = R.asset1Screen === screenId ? 'p1' : R.asset2Screen === screenId ? 'p2' : null;
-  assignedAs = myRole;
   const bothClaimed = R.asset1Screen && R.asset2Screen;
 
   if (bothClaimed && myRole) {
@@ -609,6 +475,9 @@ function renderPuzzleRouting(main) {
   }
 
   const puzzleUrl = `${puzzle.url}#${myRole}`;
+  // Already showing this puzzle? Leave it alone — rebuilding the iframe (e.g. after a reconnect) would restart the puzzle for the player.
+  const existing = document.getElementById('puzzle-frame');
+  if (existing && existing.getAttribute('src') === puzzleUrl) return;
 
   // Use an iframe so the player stays on room.html and keeps the WebSocket alive.
   // This means the admin's Force Advance will always reach all screens.
@@ -621,11 +490,8 @@ function renderPuzzleRouting(main) {
 
 function renderAdmin(main) {
   if (R.phase === 'idle') {    // Puzzle selection UI
-    const allPuzzles = [1, 2, 3];
+    const allPuzzles = [1, 2];
     const selected = R.puzzles.length ? R.puzzles : [];
-    const orderStr = selected.length
-      ? selected.map(p => `Puzzle ${p}`).join(' → ')
-      : 'None selected';
 
     main.innerHTML = `
       <div class="admin-screen">
@@ -654,49 +520,51 @@ function renderAdmin(main) {
           ▶ Start Session
         </button>
       </div>`;
-    _currentVideoToken = null;
   } else {
-    // Session in progress — admin always shows control panel (videos play on player screens)
+    // Session in progress — admin always shows the control panel
     const phase = R.phase;
     const puzzleNum = R.currentPuzzle;
 
-    // Admin shows video too (with skip button), but control panel is always visible
-    if ((phase === 'intro-video' || phase === 'puzzle-video') && R.videoSrc) {
-      renderVideo(() => {
-        if (phase === 'intro-video') { R.phase = 'role-select'; R.videoSrc = null; syncRoom(); render(); }
-        else if (phase === 'puzzle-video') { R.phase = 'puzzle'; R.videoSrc = null; R.puzzleStartTime = Date.now(); syncRoom(); render(); }
-      });
-    } else {
-      _currentVideoToken = null;
+    {
+      const bothReady = !!(R.asset1Screen && R.asset2Screen);
+      const phaseLabel = { 'role-select': 'Waiting for agents', puzzle: 'Puzzle in progress', complete: 'Session complete' }[phase] || phase;
+      const mainBtn = phase === 'role-select'
+        ? `<button class="start-btn" onclick="adminAdvance()" ${bothReady ? '' : 'disabled'}>▶ Start Puzzle ${R.puzzles[0]}${bothReady ? '' : ' — waiting for both agents'}</button>`
+        : phase === 'puzzle'
+          ? `<button class="start-btn" onclick="adminAdvance()">⏭ Force advance${R.currentIdx + 1 < R.puzzles.length ? ' to Puzzle ' + R.puzzles[R.currentIdx + 1] : ' (ends the session)'}</button>`
+          : '';
       main.innerHTML = `
         <div class="admin-screen">
-          <div class="admin-title">Session Active</div>
-          <div class="admin-sub">Monitor and control the session from here.</div>
+          <div class="admin-title">${phase === 'complete' ? 'Session Complete' : 'Session Active'}</div>
+          <div class="admin-sub">${R.sessionId ? 'Session <b>' + R.sessionId + '</b> — all data is tagged with this id.' : 'Monitor and control the session from here.'}</div>
 
           <div class="admin-section">
             <div class="admin-label">Current state</div>
             <div class="status-row">
-              <span class="status-chip ${phase === 'idle' ? 'chip-pending' : 'chip-done'}">Phase: ${phase}</span>
-              ${puzzleNum ? `<span class="status-chip chip-active">Puzzle: ${puzzleNum}</span>` : ''}
-              ${R.phase === 'puzzle' ? `<span class="status-chip" id="admin-timer" style="background:#3a0a0a;color:#f07070;border-color:#7a2020;">⏱ ${formatTimer(timerRemaining())}</span>` : ''}
-              <span class="status-chip ${R.asset1Screen ? 'chip-done' : 'chip-pending'}">Agent 1: ${R.asset1Screen || 'unassigned'}</span>
-              <span class="status-chip ${R.asset2Screen ? 'chip-done' : 'chip-pending'}">Agent 2: ${R.asset2Screen || 'unassigned'}</span>
+              <span class="status-chip ${phase === 'complete' ? 'chip-done' : 'chip-active'}">${phaseLabel}</span>
+              ${phase === 'puzzle' ? `<span class="status-chip chip-active">Puzzle ${R.currentPuzzle}</span>` : ''}
+              ${phase === 'puzzle' ? `<span class="status-chip" id="admin-timer" style="background:#3a0a0a;color:#f07070;border-color:#7a2020;">⏱ ${formatTimer(timerRemaining())}</span>` : ''}
+              <span class="status-chip ${R.asset1Screen ? 'chip-done' : 'chip-pending'}">Agent 1: ${R.asset1Screen || 'not yet'}</span>
+              <span class="status-chip ${R.asset2Screen ? 'chip-done' : 'chip-pending'}">Agent 2: ${R.asset2Screen || 'not yet'}</span>
             </div>
           </div>
 
           <div class="admin-section">
             <div class="admin-label">Puzzle order</div>
             <div class="order-display">
-              ${R.puzzles.map((n,i) => `<span style="color:${i===R.currentIdx?'#5bf5a8':i<R.currentIdx?'var(--dim)':'var(--muted)'}">
-                ${i<R.currentIdx?'✓ ':''}Puzzle ${n}
-              </span>`).join(' → ')}
+              ${R.puzzles.map((n,i) => {
+                const done = phase === 'complete' || i < R.currentIdx, now = phase === 'puzzle' && i === R.currentIdx;
+                return `<span style="color:${now ? '#5bf5a8' : done ? 'var(--dim)' : 'var(--muted)'}">${done ? '✓ ' : ''}Puzzle ${n}</span>`;
+              }).join(' → ')}
             </div>
           </div>
 
+          ${phase === 'complete' ? `<div class="admin-section"><div style="background:#0d2b1d;border:1px solid var(--okbd);border-radius:8px;padding:14px 16px;font-family:var(--mono);font-size:13px;color:#9ff0c8;line-height:1.7;">
+            ✅ Open <b>📥 Data</b> (bottom left), check it says “Backed up to gist”, download this session's data, then press Reset before the next pair.</div></div>` : ''}
           <div class="admin-section">
             <div class="admin-label">Controls</div>
-            <button class="start-btn" onclick="adminAdvance()">⏭ Force advance</button>
-            <button class="reset-btn" onclick="adminReset()">↺ Reset session</button>
+            ${mainBtn}
+            <button class="reset-btn" onclick="adminReset()">↺ Reset session (data is kept)</button>
           </div>
         </div>`;
     }
@@ -760,24 +628,90 @@ function confirmStart() {
   adminStartSession([...R.puzzles]);
 }
 
-// Override ws.onmessage to also watch puzzle states for win conditions
-// Runs on all screens so any screen can detect completion
-function setupWinWatcher() {
-  const prevOnMessage = ws.onmessage;
-  ws.onmessage = (e) => {
-    let msg; try { msg = JSON.parse(e.data); } catch { return; }
 
-    // Watch puzzle state changes for win conditions
-    if (msg.type === 'state' && msg.puzzle && msg.puzzle !== 'room') {
-      const slot = parseInt(msg.puzzle.replace('p',''));
-      if (!isNaN(slot)) checkPuzzleWin(slot, msg.state);
-    }
-
-    // Handle room state updates
-    if (msg.type === 'room-state') { applyRoomState(msg.state); }
-    if (msg.type === 'room' && msg.room?.room) { applyRoomState(msg.room.room); }
-  };
+// ══════════════════════════════════════════════════════════
+// ADMIN DATA PANEL — download session data (CSV) from the server
+// ══════════════════════════════════════════════════════════
+let _dataOpen = false, _dataAutoOpened = false;
+function adminKey() { try { return localStorage.getItem('deer_admin_key') || ''; } catch { return ''; } }
+async function adminFetch(path) {
+  const r = await fetch(path, { headers: { Authorization: 'Bearer ' + adminKey() }, cache: 'no-store' });
+  if (!r.ok) throw new Error(r.status === 401 ? 'Wrong admin key' : r.status === 503 ? 'ADMIN_KEY is not set on the server' : 'Server error ' + r.status);
+  return r;
 }
+async function adminDownload(query) {
+  try {
+    const r = await adminFetch('/admin/export?' + query);
+    const cd = r.headers.get('Content-Disposition') || '';
+    const name = (/filename="([^"]+)"/.exec(cd) || [])[1] || 'deer_data.csv';
+    const url = URL.createObjectURL(await r.blob());
+    const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  } catch (e) { alert('Download failed: ' + e.message); }
+}
+function adminDataInit() {
+  if (document.getElementById('data-btn')) return;
+  const b = document.createElement('button');
+  b.id = 'data-btn';
+  b.style.cssText = 'position:fixed;left:14px;bottom:14px;z-index:50;background:#14182e;color:#cfe3ff;border:1px solid #3a4a78;border-radius:8px;padding:9px 14px;font-family:var(--mono);font-size:12px;cursor:pointer;';
+  b.innerHTML = '📥 Data <span id="data-dot" style="display:none;color:#f07070">●</span>';
+  b.onclick = toggleDataPanel;
+  document.body.appendChild(b);
+  const p = document.createElement('div');
+  p.id = 'data-panel';
+  p.style.cssText = 'display:none;position:fixed;left:14px;bottom:58px;z-index:50;width:min(640px,calc(100vw - 28px));max-height:70vh;overflow:auto;background:#0f1226;border:1px solid #3a4a78;border-radius:10px;padding:16px;font-family:var(--mono);font-size:12px;color:#cfe3ff;box-shadow:0 8px 40px rgba(0,0,0,.6);';
+  document.body.appendChild(p);
+  refreshDataPanel(true);
+  setInterval(() => refreshDataPanel(false), 10000);
+}
+function toggleDataPanel() {
+  _dataOpen = !_dataOpen;
+  document.getElementById('data-panel').style.display = _dataOpen ? 'block' : 'none';
+  if (_dataOpen) refreshDataPanel(true);
+}
+async function refreshDataPanel(force) {
+  const p = document.getElementById('data-panel'); if (!p) return;
+  if (!_dataOpen && !force) { /* still poll quietly for the warning dot */ }
+  const dot = document.getElementById('data-dot');
+  const keyBox = `<div style="display:flex;gap:6px;margin:8px 0 12px;"><input id="data-key" type="password" placeholder="Admin key" value="${adminKey().replace(/"/g,'')}" style="flex:1;background:#0a0c18;color:#fff;border:1px solid #3a4a78;border-radius:5px;padding:7px 9px;font-family:var(--mono);font-size:12px;"><button onclick="saveAdminKey()" style="background:#1a5fa8;color:#fff;border:none;border-radius:5px;padding:7px 12px;font-family:var(--mono);cursor:pointer;">Save key</button></div>`;
+  if (!adminKey()) { p.innerHTML = '<b>Session data</b><div style="color:#9aa8c8;margin-top:6px">Enter the admin key (the ADMIN_KEY set on Render) to download data.</div>' + keyBox; if (dot) dot.style.display = 'inline'; return; }
+  try {
+    const st = await (await adminFetch('/admin/status')).json();
+    const g = st.gist;
+    const gistLine = !g.configured ? '<span style="color:#f07070">⚠ Gist backup NOT configured — data is only on this server</span>'
+      : g.lastError ? `<span style="color:#f07070">⚠ Gist save failing: ${esc(g.lastError)} (retrying; ${g.pending_sessions} session(s) waiting)</span>`
+      : g.pending_sessions ? `<span style="color:#ffd166">⏳ Saving to gist… (${g.pending_sessions} session(s) pending)</span>`
+      : `<span style="color:#5bf5a8">✓ Backed up to gist${g.lastSaved ? ' at ' + new Date(g.lastSaved).toLocaleTimeString() : ''}</span>`;
+    if (dot) dot.style.display = (!g.configured || g.lastError) ? 'inline' : 'none';
+    const rows = st.sessions.slice().reverse().map(s => `<tr>
+      <td style="padding:5px 6px;white-space:nowrap"><b>${esc(s.id)}</b>${s.mode === 'standalone' ? ' <span style="color:#8090a8">(standalone)</span>' : ''}</td>
+      <td style="padding:5px 6px;color:#9aa8c8">${s.start ? new Date(s.start).toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}) : ''}</td>
+      <td style="padding:5px 6px;text-align:right">${s.rows_p1}/${s.rows_p2}</td>
+      <td style="padding:5px 6px;text-align:center">${s.all_completed ? '✅' : (s.ended_by === 'complete' ? '⏭' : (s.ended_by === 'reset' ? '↺' : '…'))}</td>
+      <td style="padding:5px 6px;white-space:nowrap"><button class="dl" onclick="adminDownload('type=events&session=${encodeURIComponent(s.id)}')">events</button> <button class="dl" onclick="adminDownload('type=summary&session=${encodeURIComponent(s.id)}')">summary</button></td></tr>`).join('');
+    p.innerHTML = `<style>#data-panel .dl{background:#1a2a4a;color:#cfe3ff;border:1px solid #3a4a78;border-radius:4px;padding:3px 8px;font-family:var(--mono);font-size:11px;cursor:pointer}#data-panel .dl:hover{background:#25407a}</style>
+      <div style="display:flex;justify-content:space-between;align-items:center"><b>Session data</b><button class="dl" onclick="toggleDataPanel()">close</button></div>
+      <div style="margin:8px 0 12px">${gistLine}</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+        <button class="dl" onclick="adminDownload('type=events&session=all')">All sessions — events (both puzzles)</button>
+        <button class="dl" onclick="adminDownload('type=summary&session=all')">All sessions — summary</button>
+        <button class="dl" onclick="saveNow()">Save to gist now</button>
+      </div>
+      <table style="width:100%;border-collapse:collapse"><thead><tr style="color:#8090a8;text-align:left"><th style="padding:4px 6px">Session</th><th style="padding:4px 6px">Started</th><th style="padding:4px 6px;text-align:right">Rows P1/P2</th><th style="padding:4px 6px" title="✅ both puzzles completed · ⏭ ended with force-advance · ↺ reset · … in progress / unknown">Done</th><th></th></tr></thead><tbody>${rows || '<tr><td colspan="5" style="padding:8px 6px;color:#8090a8">No sessions recorded yet.</td></tr>'}</tbody></table>
+      <details style="margin-top:12px"><summary style="cursor:pointer;color:#8090a8">Admin key</summary>${keyBox}</details>`;
+    if (R.phase === 'complete' && !_dataAutoOpened) { _dataAutoOpened = true; if (!_dataOpen) toggleDataPanel(); }
+  } catch (e) {
+    if (dot) dot.style.display = 'inline';
+    p.innerHTML = `<b>Session data</b><div style="color:#f07070;margin-top:6px">${esc(e.message)}</div>` + keyBox;
+  }
+}
+function saveAdminKey() {
+  const v = document.getElementById('data-key').value.trim();
+  try { localStorage.setItem('deer_admin_key', v); } catch (e) {}
+  refreshDataPanel(true);
+}
+async function saveNow() { try { await adminFetch('/admin/save-now'); } catch (e) { alert(e.message); } refreshDataPanel(true); }
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
 // ══════════════════════════════════════════════════════════
 // INIT
@@ -809,12 +743,11 @@ function initView() {
 
 const ready = initView();
 if (ready) {
-  preloadVideos(); // start caching video files immediately
+  if (screenId === 'admin') adminDataInit();
   render();
   if (location.protocol !== 'file:') {
     connectWS();
     startStatePoll();
-    setTimeout(() => { if (ws) setupWinWatcher(); }, 800);
   } else {
     updateBadge(true);
     document.getElementById('conn-label').textContent = 'LOCAL MODE';
