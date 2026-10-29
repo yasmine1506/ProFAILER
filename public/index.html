@@ -34,11 +34,12 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--tx);font-
 body::before{content:'';position:fixed;inset:0;
   background:repeating-linear-gradient(0deg,rgba(0,212,255,0.015) 0px,rgba(0,212,255,0.015) 1px,transparent 1px,transparent 3px);
   pointer-events:none;z-index:9999}
-.app{display:flex;flex-direction:column;height:100vh;overflow:hidden;}
+.app{display:flex;flex-direction:column;height:100vh;height:100dvh;overflow:hidden;}   /* dvh = the visible height on iPad Safari (100vh runs under the toolbar) */
 /* ── MISSION BRIEFING (pre-puzzle gate) — ported verbatim from Puzzle 1 ── */
 .briefing-overlay{position:fixed;inset:0;z-index:6000;background:radial-gradient(ellipse at center,#0b1629 0%,#04070d 100%);
-  display:flex;align-items:center;justify-content:center;padding:32px;overflow-y:auto}
+  display:flex;align-items:flex-start;justify-content:center;padding:32px 32px calc(120px + env(safe-area-inset-bottom, 0px));overflow-y:auto;-webkit-overflow-scrolling:touch}
 .briefing-overlay.hidden{display:none}
+.briefing-overlay > .briefing-card{margin:auto}   /* centers short cards without cutting off the top of tall ones */
 .briefing-card{max-width:820px;width:100%;border:1px solid rgba(0,212,255,0.35);border-radius:8px;
   background:rgba(11,22,41,0.85);box-shadow:0 0 40px rgba(0,212,255,0.15);padding:48px 56px;position:relative;
   color:var(--brief-text)} /* Puzzle 1's page had a light default text color; Puzzle 2's is dark,
@@ -125,7 +126,7 @@ body::before{content:'';position:fixed;inset:0;
 
 /* TWO-COLUMN PLAYER PANEL — fills remaining height */
 .view-panel{display:none;flex:1;overflow:hidden;min-height:0;}
-.view-panel.active{display:grid;grid-template-columns:40% 60%;height:calc(100vh - 62px);}
+.view-panel.active{display:grid;grid-template-columns:40% 60%;height:calc(100vh - 62px);height:calc(100dvh - 62px);}
 .view-panel.active.phase-intro{grid-template-columns:1fr;}
 .view-panel.active.phase-intro .col-shared{display:none;}
 .view-panel.active.phase-intro .col-private{grid-column:1;background:#0c0e1a;}
@@ -170,10 +171,10 @@ body::before{content:'';position:fixed;inset:0;
 .workstation-hdr{color:#04070d;font-family:var(--font-head);font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;padding:10px 18px;background:var(--p1);}
 .workstation-hdr.wk-p2{background:var(--p2);}
 .workstation-body{padding:16px 18px;}
-.col-shared{overflow-y:auto;border-right:2px solid var(--bd2);background:var(--bg);}
+.col-shared{overflow-y:auto;border-right:2px solid var(--bd2);background:var(--bg);padding-bottom:calc(120px + env(safe-area-inset-bottom, 0px));}   /* room below the last button so iPad toolbars / home bar never cover it */
 .col-shared::-webkit-scrollbar,.col-private::-webkit-scrollbar{width:4px;}
 .col-shared::-webkit-scrollbar-thumb,.col-private::-webkit-scrollbar-thumb{background:var(--bd2);border-radius:2px;}
-.col-private{overflow-y:auto;background:var(--bg-panel);}
+.col-private{overflow-y:auto;background:var(--bg-panel);padding-bottom:calc(120px + env(safe-area-inset-bottom, 0px));}
 .col-hdr{padding:6px 12px;display:flex;align-items:center;gap:7px;position:sticky;top:0;z-index:10;border-bottom:1px solid var(--bd);}
 .col-hdr-shared{background:var(--bg-inset);}
 .col-hdr-private{background:var(--bg-panel);}
@@ -271,14 +272,27 @@ body::before{content:'';position:fixed;inset:0;
 .prob-row-label{font-size:17px;color:var(--mu);}
 .prob-row-score{font-family:var(--mono);font-size:22px;font-weight:600;color:var(--p2);text-align:right;}
 
+/* Mission brief: pulses for the first few seconds so players read it before scrolling on */
+@keyframes briefPulse{0%,100%{box-shadow:0 0 20px rgba(0,212,255,.08);border-top-color:var(--p1bd);border-bottom-color:var(--p1bd)}
+  50%{box-shadow:0 0 36px 6px rgba(0,212,255,.6),inset 0 0 26px rgba(0,212,255,.14);border-top-color:#5ee0ff;border-bottom-color:#5ee0ff}}
+.brief-glow{position:relative;animation:briefPulse 1.6s ease-in-out 3}
+/* Spotlight: while the brief pulses, everything else on the player's screen is dimmed and inert, so there is nothing to scroll to yet */
+#p1-content .sec,#p2-content .sec{transition:opacity .7s ease,filter .7s ease}
+body.brief-spot #p1-content .sec:not(.brief-sec),body.brief-spot #p2-content .sec:not(.brief-sec){opacity:.1;filter:blur(2px);pointer-events:none;user-select:none}
+@media (prefers-reduced-motion:reduce){.brief-glow{animation:none;box-shadow:0 0 26px 4px rgba(0,212,255,.5)}}
 /* MODAL */
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px;}
-.modal-box{background:var(--bg-panel);border:1px solid var(--bd);border-radius:8px;padding:22px;max-width:680px;width:100%;max-height:88vh;overflow-y:auto;box-shadow:0 8px 40px rgba(0,0,0,.5);}
+.modal-box{background:var(--bg-panel);border:1px solid var(--bd);border-radius:8px;padding:22px;max-width:680px;width:100%;max-height:88vh;max-height:calc(100dvh - 110px);overflow-y:auto;box-shadow:0 8px 40px rgba(0,0,0,.5);}
 .modal-title{font-size:21px;font-weight:700;margin-bottom:14px;color:var(--tx);}
 .modal-close{float:right;background:none;border:none;font-size:20px;cursor:pointer;color:var(--dim);margin-top:-2px;}
 .log-entry{background:var(--bg-inset);border-radius:6px;padding:12px 14px;margin-bottom:8px;border:1px solid var(--bd2);}
 .log-e-hdr{font-family:var(--mono);font-size:16px;font-weight:700;color:var(--tx);margin-bottom:8px;display:flex;align-items:center;flex-wrap:wrap;gap:10px;}
 .log-e-seq{font-family:var(--mono);font-size:32px;letter-spacing:6px;color:var(--tx);line-height:1.3;}
+.log-e-inline{display:flex;align-items:center;flex-wrap:wrap;letter-spacing:0;row-gap:6px;}
+.log-e-link{display:inline-flex;flex-direction:column;align-items:center;margin:0 8px;line-height:1;}
+.log-e-num{font-family:var(--mono);font-size:16px;font-weight:700;color:#c39bff;}
+.log-e-arrow{font-size:16px;color:var(--mu);margin-top:2px;}
+.log-e-sym{font-size:32px;line-height:1.3;}
 .log-e-prob{font-family:var(--mono);font-size:16px;color:#ff9a6c;margin-top:6px;line-height:1.6;}
 .confirm-title{font-size:22px;font-weight:600;color:var(--mu);margin-bottom:8px;text-align:center;}
 .confirm-msg{font-size:22px;color:var(--mu);line-height:1.6;margin-bottom:14px;}
@@ -405,6 +419,12 @@ body::before{content:'';position:fixed;inset:0;
 .fn-done span{display:inline-flex;width:34px;height:34px;border-radius:50%;border:2px solid #5bf5a8;align-items:center;justify-content:center;margin-right:10px;font-size:20px;vertical-align:middle}
 .fn-go{padding:13px 30px;border-radius:8px;border:1px solid #5bf5a8;background:rgba(91,245,168,.12);color:#5bf5a8;font-family:var(--mono);font-size:15px;font-weight:700;letter-spacing:.08em;cursor:pointer}
 .fn-go:hover{background:rgba(91,245,168,.22)}
+
+.ws-grid{display:flex;gap:28px;align-items:flex-start;margin-top:4px;}
+.ws-left{flex:0 0 600px;min-width:0;}
+.ws-right{flex:1 1 0;min-width:0;}
+.ws-right .btn-row{display:flex;}
+@media (max-width:1150px){.ws-grid{flex-direction:column;gap:18px;}.ws-left,.ws-right{flex:none;width:100%;}}
 </style>
 </head>
 <body>
@@ -667,7 +687,7 @@ function greedyScore(txIdx){
 
 function stHtml(v){
   const cls=v==='verified'?'st-verified':v==='hallucination'?'st-hallucination':'st-pending';
-  const lbl=v==='verified'?'Verified Truth':v==='hallucination'?'Hallucination':'Pending Response';
+  const lbl=v==='verified'?'Fact':v==='hallucination'?'Hallucination':'Pending Response';
   return`<span class="st ${cls}">${lbl}</span>`;
 }
 
@@ -991,6 +1011,7 @@ function revealBriefingSection(key) {
 
 /* ── Read the briefing aloud (Web Speech API; low pitch + a male voice when the device has one) ── */
 const BR = { on: true, gen: 0, voice: null };
+const BR_RATE = 1.25;   // briefing narration speed (1 = browser default)
 const BR_OK = (() => { try { return 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window; } catch (e) { return false; } })();
 function brSectionText(key, agent) {
   const q = sel => { const el = document.querySelector(sel); return el ? el.innerText.replace(/\s+/g, ' ').trim() : ''; };
@@ -1018,7 +1039,7 @@ function brSpeak(texts) {
   const next = i => {
     if (g !== BR.gen || i >= list.length) return;
     const u = new SpeechSynthesisUtterance(list[i]), v = brPickVoice();
-    u.lang = 'en-US'; u.pitch = 0.45; u.rate = 1; u.volume = 1;
+    u.lang = 'en-US'; u.pitch = 0.45; u.rate = BR_RATE; u.volume = 1;
     if (v) { u.voice = v; u.lang = v.lang; }
     u.onend = () => setTimeout(() => next(i + 1), 250);
     u.onerror = () => {};
@@ -1122,8 +1143,8 @@ function showConfirmTransmit(){
     }
     const l2=lastLog2(1);
     if(!l2||l2.verdict!=='verified'){
-      p2ModalLocal(`<div class="modal-title" style="color:var(--err);">⚠ Not a verified truth</div>
-        <div style="font-size:15px;color:var(--tx);line-height:1.7;margin-bottom:16px;">Your Transmission 2 is not a verified truth. Go back and review it.</div>
+      p2ModalLocal(`<div class="modal-title" style="color:var(--err);">⚠ Not a fact</div>
+        <div style="font-size:15px;color:var(--tx);line-height:1.7;margin-bottom:16px;">Your Transmission 2 is not a fact. Go back and review it.</div>
         <button class="btn" onclick="closeP2NotVerified()">Go back</button>`,'closeP2NotVerified()');
       return;
     }
@@ -1201,16 +1222,16 @@ function renderModal(){
     }
   } else if(S.showConfirm==='p2tx2ok'){
     inner=`<div style="text-align:center">
-      <div class="confirm-title" style="color:var(--ok);font-size:18px;">✓ Verified truth</div>
-      <div class="confirm-msg" style="color:var(--tx);">Transmission 2 is a verified truth. Both transmissions have been logged successfully.</div>
+      <div class="confirm-title" style="color:var(--ok);font-size:18px;">✓ Fact</div>
+      <div class="confirm-msg" style="color:var(--tx);">Transmission 2 is a fact. Both transmissions have been logged successfully.</div>
       <div class="confirm-btns">
         <button class="btn btn-ok" onclick="confirmTransmit2()">Continue</button>
       </div>
     </div>`;
   } else if(S.showConfirm==='p2tx1ok'){
     inner=`<div style="text-align:center">
-      <div class="confirm-title" style="color:var(--ok);font-size:18px;">✓ Verified truth</div>
-      <div class="confirm-msg" style="color:var(--tx);">Transmission 1 is a verified truth. Sent successfully.</div>
+      <div class="confirm-title" style="color:var(--ok);font-size:18px;">✓ Fact</div>
+      <div class="confirm-msg" style="color:var(--tx);">Transmission 1 is a fact. Sent successfully.</div>
       <div class="confirm-btns">
         <button class="btn btn-ok" onclick="confirmSendP2Tx1()">Continue to transmission 2</button>
       </div>
@@ -1258,8 +1279,9 @@ function renderModal(){
           ${scoreBadge}
           ${e.count>1?`<span style="font-family:var(--mono);font-size:13px;font-weight:700;background:var(--warnlt);color:var(--warn);border:1px solid var(--warnbd);padding:3px 8px;border-radius:4px;">×${e.count}</span>`:''}
         </div>
-        <div class="log-e-seq">${e.seq.join(' ')}</div>
-        ${showProbs?`<div class="log-e-prob">${e.probs.map((p,pi)=>`${e.seq[pi]}→${e.seq[pi+1]}: ${p}`).join(' | ')}</div>`:''}
+        ${showProbs
+          ?`<div class="log-e-seq log-e-inline">${e.seq.map((g,gi)=>`${gi>0?`<span class="log-e-link"><span class="log-e-num">${e.probs[gi-1]!==undefined?e.probs[gi-1]:''}</span><span class="log-e-arrow">→</span></span>`:''}<span class="log-e-sym">${g}</span>`).join('')}</div>`
+          :`<div class="log-e-seq">${e.seq.join(' ')}</div>`}
       </div>`;
     };
     inner=`<button class="modal-close" onclick="closeModal()">✕</button>
@@ -1485,7 +1507,7 @@ function sharedScreenHTML(){
             <span style="font-family:var(--mono);font-size:11px;color:#5a80a0;">TX-0${i+1}</span>
             <span style="font-family:var(--mono);font-size:14px;color:#c0d8f0;letter-spacing:4px;margin:0 10px;">${seq.join(' ')}</span><br>
             <span style="font-family:var(--mono);font-size:12px;color:#8090a8;">Highest statistical likeliness achieved. Score: <strong style="color:#c0d8f0">${score}</strong></span><br>
-            <span style="font-family:var(--mono);font-size:12px;">Verdict: <strong style="${v==='verified'?'color:#5bf5a8':v==='hallucination'?'color:#f07070':'color:#8090a8'}">${v==='verified'?'Verified Truth':v==='hallucination'?'Hallucination':'Pending'}</strong></span>
+            <span style="font-family:var(--mono);font-size:12px;">Verdict: <strong style="${v==='verified'?'color:#5bf5a8':v==='hallucination'?'color:#f07070':'color:#8090a8'}">${v==='verified'?'Fact':v==='hallucination'?'Hallucination':'Pending'}</strong></span>
           </div>`;
         }).join('')}
       </div></div>`;
@@ -1573,7 +1595,7 @@ function sharedScreenHTML(){
       const vcls=v==='verified'?'var(--ok)':v==='hallucination'?'var(--err)':'var(--dim)';
       const vbg=v==='verified'?'var(--oklt)':v==='hallucination'?'var(--errlt)':'var(--bg-inset)';
       const vbd=v==='verified'?'var(--okbd)':v==='hallucination'?'var(--errbd)':'var(--bd2)';
-      const vlbl=v==='verified'?'Verified Truth':v==='hallucination'?'Hallucination':'Pending';
+      const vlbl=v==='verified'?'Fact':v==='hallucination'?'Hallucination':'Pending';
       return`<span style="font-family:var(--mono);font-size:11px;font-weight:600;padding:3px 10px;border-radius:3px;background:${vbg};border:1px solid ${vbd};color:${vcls};">${vlbl}</span>`;
     }
 
@@ -1646,13 +1668,13 @@ function sharedScreenHTML(){
    boxes: no left/right border (top/bottom rule only), a label, and a short
    stack of icon + highlighted-phrase lines instead of one paragraph. */
 function inPredictStage(){return S.phase===2&&S.p2stage==='predict';}
-function predictSymRow(syms,codex,seedSym){
+function predictSymRow(syms,codex,seedSym,hideEnglish){
   return`<div style="display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;">
     ${syms.map((g,i)=>{
       const isSeed=seedSym&&i===0&&g===seedSym;
       return`<div style="display:flex;flex-direction:column;align-items:center;gap:6px;min-width:72px;">
         <span class="${isSeed?'tx-sym seed':'tx-sym'}" style="font-size:32px;line-height:1.2;padding:2px 8px;">${g}</span>
-        <div style="font-size:13px;color:var(--tx);text-align:center;max-width:100px;line-height:1.35;">${codex[g]||'?'}</div>
+        ${hideEnglish?'':`<div style="font-size:13px;color:var(--tx);text-align:center;max-width:100px;line-height:1.35;">${codex[g]||'?'}</div>`}
       </div>`;
     }).join('')}
   </div>`;
@@ -1674,7 +1696,7 @@ function predictThreadHTML(i,who){
       border:2px solid ${bd};background:${bg};color:${col};${ok&&!on?'opacity:.4;':''}">${on?'● ':'○ '}${label}</button>`;
   };
   const feedback=ok
-    ?`<div style="margin-top:12px;font-family:var(--mono);font-size:14px;font-weight:600;color:var(--ok);">✓ Correct — your output transmission ${i+1} is ${S.finalVerdicts[i]==='verified'?'a verified truth':'a hallucination'}.</div>`
+    ?`<div style="margin-top:12px;font-family:var(--mono);font-size:14px;font-weight:600;color:var(--ok);">✓ Correct — your output transmission ${i+1} is ${S.finalVerdicts[i]==='verified'?'a fact':'a hallucination'}.</div>`
     :wrong
       ?`<div style="margin-top:12px;font-family:var(--mono);font-size:14px;font-weight:600;color:var(--err);">✗ Not quite. Check the token translations with your partner and try again.</div>`
       :'';
@@ -1694,7 +1716,7 @@ function predictThreadHTML(i,who){
             <div style="padding-bottom:18px;">${ll?predictSymRow(ll.seq,OUTPUT_CODEX,tx.seed):'<span style="font-size:13px;color:var(--mu);font-style:italic;">No output logged.</span>'}</div>
             <div class="msg-receipt">
               <div style="font-size:15px;font-weight:600;color:var(--tx);line-height:1.5;margin-bottom:12px;">Is your output transmission true or a hallucination?</div>
-              <div style="display:flex;gap:12px;flex-wrap:wrap;">${opt('verified','It is a verified truth')}${opt('hallucination','It is a hallucination')}</div>
+              <div style="display:flex;gap:12px;flex-wrap:wrap;">${opt('verified','It is a fact')}${opt('hallucination','It is a hallucination')}</div>
               ${feedback}
             </div>
           </div>
@@ -1737,7 +1759,7 @@ let EX_SCENES=[{a:0,b:15},{a:15,b:33},{a:33,b:48},{a:48,b:64},{a:64,b:78}];
 let EX_TOTAL=78;
 let EX_SCRIPT=[
   'Large Language Models (like ChatGPT, Claude, or XENOX-7) work as "probability machines."',
-  'They are word generators that predict one word, or more accurately one "token" (which are either words or fragments of words), at a time.',
+  'They generate text one small piece at a time. Each piece is called a token. A token can be a whole word, or just a fragment of a word, like "trans" in "transmit."',
   'These AI models take your prompt, run a bunch of calculations, and then generate a probability distribution across all possible tokens in its vocabulary.',
   'Then the model runs again for the next token, and again, over and over to form the outputs you see.',
   'The models run on probabilities between tokens, but that does not mean they understand language like we do.'
@@ -2158,19 +2180,24 @@ function exH6(t){ // student test: blank = 0, guess might be right
   s+=exTxt(420,372,'guessing beats leaving it blank',{size:19,fill:EXC.go,ls:2,...EXH_TITLE,op:_fd(t,10,11.2)});
   return s;
 }
-function exH7(t){ // models learn to guess
+function exH7(t){ // models learn to guess: tested on benchmarks (scored) -> "I don't know" = 0 -> guess might be right, or a hallucination
   const m=_fd(t,0,1.2);
   let s=exMachine(140,200,180,120,t,m,'AN LLM');
   s+=exTxt(140,104,'trained & tested',{size:13,fill:EXC.st,op:_fd(t,1,2)})+exTxt(140,121,'like the student',{size:13,fill:EXC.st,op:_fd(t,1.2,2.2)});
-  const A=_fd(t,2.2,3.2),B=_fd(t,3.4,4.4),pick=_fd(t,6.4,7.4);
+  // benchmark: every answer is scored
+  const Bn=_fd(t,4,5.2);
+  s+=exFlow(140,262,140,292,t,0.8*Bn);
+  s+=`<g opacity="${Bn}"><rect x="40" y="294" width="200" height="62" rx="10" fill="#0f1e35" stroke="${EXC.go}" stroke-width="2.5"/>${exTxt(140,320,'BENCHMARK',{size:14,fill:EXC.go,ls:3,w:700})}${exTxt(140,342,'every answer is scored',{size:12.5,fill:'#e6f1ff'})}</g>`;
+  const A=_fd(t,7.4,8.4),B=_fd(t,11.4,12.4),pick=_fd(t,12.6,13.4);
   s+=exFlow(232,180,330,100,t,0.8*A)+exFlow(232,220,330,270,t,0.8*B);
   s+=`<g opacity="${A*(1-0.55*pick)}"><rect x="330" y="66" width="460" height="68" rx="12" fill="#0f1e35" stroke="${EXC.vi}" stroke-width="2.5"/>${exTxt(500,108,'“I don’t know.”',{size:19,fill:'#e6f1ff'})}</g>`;
-  s+=exChip(710,66,'0 points',{size:15,w:110,h:34,stroke:EXC.rd,tc:EXC.rd,op:A*(1-0.55*pick)});
+  s+=exChip(710,66,'0 points',{size:15,w:110,h:34,stroke:EXC.rd,tc:EXC.rd,op:_fd(t,9.2,10.2)*(1-0.55*pick)});
   s+=exCross(560,100,150,40,EXC.rd,pick*0.85);
   const pulse=0.5+0.5*Math.sin(t*4);
   s+=`<g opacity="${B}"><rect x="330" y="236" width="460" height="68" rx="12" fill="#0f1e35" stroke="${pick>0.5?EXC.go:EXC.cy}" stroke-width="${2.5+pick*pulse*1.5}" ${pick>0.5?'filter="url(#exglow)"':''}/>${exTxt(500,278,'A guess.',{size:19,fill:'#e6f1ff'})}</g>`;
-  s+=exChip(710,236,'might score',{size:15,w:130,h:34,stroke:EXC.go,tc:EXC.go,op:B});
-  s+=exTxt(420,360,'LLMs learn to guess',{size:24,fill:EXC.go,ls:3,...EXH_TITLE,op:_fd(t,8.6,9.8)});
+  s+=exChip(710,236,'might be right',{size:15,w:160,h:34,stroke:EXC.go,tc:EXC.go,op:_fd(t,14.2,15)});
+  s+=exChip(660,304,'or a hallucination',{size:15,w:210,h:34,stroke:EXC.or,tc:EXC.or,hl:_fd(t,17,17.8)>0.5,op:_fd(t,16.2,17)});
+  s+=exTxt(420,364,'LLMs learn to guess',{size:24,fill:EXC.go,ls:3,...EXH_TITLE,op:_fd(t,13,14.2)});
   return s;
 }
 
@@ -2179,17 +2206,17 @@ let EX_EMPH=new Set(['probability','machines','token','tokens','probabilities'])
 const EX_L={script:EX_SCRIPT,scenes:EX_SCENES,total:EX_TOTAL,emph:EX_EMPH};
 const EX_H={
   script:[
-    'Large Language Models have no concept of truth. They never check whether what they write is a verified fact or something made up.',
+    'Large Language Models have no concept of truth. They never check whether what they write is a fact or something made up.',
     'Remember: an LLM writes by predicting the most likely next token, then the next, then the next. Most of the time, the likely answer is also the true one.',
     'But sometimes the likely answer is not the true one. That is called a hallucination: an answer that sounds confident and fluent, but is completely made up.',
     'It often happens when facts are missing or the question is vague. Instead of stopping, the model fills in the gaps.',
     'For example, ask about a research paper that does not exist. The model has no facts to use, so it writes a likely answer that sounds completely real.',
     'So why doesn\'t the model just say "I don\'t know"? Think of a student taking a test: a blank answer scores zero, but a guess might be right.',
-    'LLMs are trained and tested in a similar way, so they learn to guess. They give an answer, even when they are unsure, instead of saying "I don\'t know."'
+    'LLMs are trained and tested in a similar way: they are tested against benchmarks and given a score. On many benchmarks, "I don\'t know" scores zero. So LLMs learn to guess. Sometimes the guess is right. Sometimes it is a hallucination.'
   ],
-  scenes:[{a:0,b:14},{a:14,b:29},{a:29,b:44},{a:44,b:58},{a:58,b:73},{a:73,b:87},{a:87,b:101}],
-  total:101,
-  emph:new Set(['truth','hallucination','confident','fluent','guess','zero'])
+  scenes:[{a:0,b:14},{a:14,b:29},{a:29,b:44},{a:44,b:58},{a:58,b:73},{a:73,b:87},{a:87,b:107}],
+  total:107,
+  emph:new Set(['truth','hallucination','confident','fluent','guess','zero','benchmarks','score'])
 };
 function exAnimDef(id){
   if(id==='halluc')return {id,title:'WHY LLMs HALLUCINATE',...EX_H,fns:[exH1,exH2,exH3,exH4,exH5,exH6,exH7],fadeIn:i=>i>=1,fadeOut:i=>i<6};
@@ -2210,10 +2237,14 @@ function exWrap(text,max){
   return lines;
 }
 function exCaption(i,lt,dur){
-  const lines=exWrap(EX_SCRIPT[i],62),total=lines.reduce((n,l)=>n+l.length,0);
-  const shown=total;let n=0,s=`<rect x="20" y="394" width="800" height="${24+lines.length*28}" rx="12" fill="#0a1626" stroke="#24405f" stroke-width="1.5"/>`;
+  let lines=exWrap(EX_SCRIPT[i],62);
+  const big=lines.length>3;            // long narration: smaller type so the caption box stays inside the stage
+  if(big)lines=exWrap(EX_SCRIPT[i],70);
+  const fs=big?16:18,lh=big?25:28,h=24+lines.length*lh,y0=big?515-h-8:394;
+  const total=lines.reduce((n,l)=>n+l.length,0);
+  const shown=total;let n=0,s=`<rect x="20" y="${y0}" width="800" height="${h}" rx="12" fill="#0a1626" stroke="#24405f" stroke-width="1.5"/>`;
   lines.forEach((ln,li)=>{
-    s+=`<text x="420" y="${422+li*28}" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="18" font-weight="600">`;
+    s+=`<text x="420" y="${y0+28+li*lh}" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="${fs}" font-weight="600">`;
     ln.forEach((w,wi)=>{
       const op=_c(shown-n),clean=w.toLowerCase().replace(/[^a-z]/g,'');n++;
       s+=`<tspan fill="${EX_EMPH.has(clean)?'#ffd166':'#e6f1ff'}" fill-opacity="${op}">${w}${wi<ln.length-1?' ':''}</tspan>`;
@@ -2422,7 +2453,7 @@ function exOpenModal(who,animId){
   narReset();NAR.blocked=false;NAR.failed=false;NAR.fails=0;NAR.err='';EX.t=0;EX.playing=true;EX.maxSeen=EX_TOTAL;
   const d=document.createElement('div');d.id='ex-modal';
   d.setAttribute('role','dialog');d.setAttribute('aria-modal','true');d.setAttribute('aria-label','How XENOX-7 works');
-  d.style.cssText='position:fixed;inset:0;z-index:10000;background:rgba(3,8,16,.92);overflow:auto;padding:24px 16px;';
+  d.style.cssText='position:fixed;inset:0;z-index:10000;background:rgba(3,8,16,.92);overflow:auto;padding:24px 16px calc(120px + env(safe-area-inset-bottom, 0px));';
   d.addEventListener('mousedown',e=>{if(e.target===d)exCloseModal();});
   d.innerHTML=explainerCoreHTML(who||'p1',true);
   document.body.appendChild(d);
@@ -2434,15 +2465,16 @@ function exCloseModal(){
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.getElementById('ex-modal'))exCloseModal();});
 
 function phase2BriefHTML(){
-  return `<div class="sec">
-    <div style="max-width:860px;margin:0 auto;background:var(--bg-panel);
+  const g=briefGlow('phase2');
+  return `<div class="sec brief-sec">
+    <div class="brief-card${g.cls}" style="${g.style}max-width:1260px;margin:0 auto;background:var(--bg-panel);
       border-top:1px solid var(--p1bd);border-bottom:1px solid var(--p1bd);
       padding:16px 24px;box-shadow:0 0 20px rgba(0,212,255,0.08);">
       <div style="font-family:var(--font-head);font-size:13px;font-weight:700;letter-spacing:.2em;
         color:var(--p1);text-shadow:0 0 8px rgba(0,212,255,0.4);margin-bottom:12px;text-align:center;">MISSION BRIEF</div>
       <div style="display:flex;align-items:flex-start;gap:12px;">
         <svg viewBox="0 0 24 24" fill="none" stroke="var(--p1)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;width:24px;height:24px;margin-top:3px;"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1.2" fill="var(--p1)" stroke="none"/></svg>
-        <span style="font-family:var(--mono);font-size:18px;color:var(--mu);line-height:1.6;"><strong style="color:var(--tx);">Evaluate</strong> and <strong style="color:var(--tx);">reconstruct</strong> your transmission outputs to be <strong style="color:var(--tx);">verified truths</strong> before they go into Dr. Searle's demo log.</span>
+        <span style="font-family:var(--mono);font-size:18px;color:var(--mu);line-height:1.6;"><strong style="color:var(--tx);">Evaluate</strong> and <strong style="color:var(--tx);">reconstruct</strong> your transmission outputs to be <strong style="color:var(--tx);">facts</strong> before they go into Dr. Searle's demo log.</span>
       </div>
       <div style="display:flex;justify-content:center;flex-wrap:wrap;gap:10px;margin-top:14px;">
         <button onclick="exOpenModal('p1','llm')" style="display:inline-flex;align-items:center;gap:8px;padding:8px 16px;border-radius:6px;cursor:pointer;font-family:var(--mono);font-size:14px;font-weight:700;letter-spacing:.04em;border:2px solid var(--p1bd);background:var(--p1lt);color:var(--p1);">▶ Rewatch: how XENOX-7 works</button>
@@ -2453,7 +2485,7 @@ function phase2BriefHTML(){
 }
 function verdictTagHTML(v){
   const ok=v==='verified';
-  return `<span style="font-family:var(--mono);font-size:13px;font-weight:700;letter-spacing:.04em;padding:4px 12px;border-radius:4px;background:${ok?'var(--oklt)':'var(--errlt)'};border:1px solid ${ok?'var(--okbd)':'var(--errbd)'};color:${ok?'var(--ok)':'var(--err)'};">${ok?'Verified truth':'Hallucination'}</span>`;
+  return `<span style="font-family:var(--mono);font-size:13px;font-weight:700;letter-spacing:.04em;padding:4px 12px;border-radius:4px;background:${ok?'var(--oklt)':'var(--errlt)'};border:1px solid ${ok?'var(--okbd)':'var(--errbd)'};color:${ok?'var(--ok)':'var(--err)'};">${ok?'Fact':'Hallucination'}</span>`;
 }
 /* Phase 2 transmission block (messaging style): input w/ translations, latest logged output
    w/ translations + qualitative probability bar + numeric score + verdict tag. */
@@ -2461,6 +2493,7 @@ function phase2ThreadHTML(txIdx,who){
   who=who||'p1';
   const acc=who==='p2'?'var(--p2)':'var(--p1)', tint=who==='p2'?'var(--p2lt)':'var(--p1lt)', edge=who==='p2'?'var(--p2bd)':'var(--p1bd)';
   const tx=TRANSMISSIONS[txIdx];
+  const noEng=p2CodexHolder(txIdx)!==who;   // only the codex holder sees English translations
   const ll=lastLog2(txIdx)||lastLog1(txIdx);
   const justLogged=S.lastLogged&&S.lastLogged.txIdx===txIdx&&Date.now()-S.lastLogged.time<2000;
   let out;
@@ -2469,8 +2502,8 @@ function phase2ThreadHTML(txIdx,who){
     const verdictRow=`<div style="display:flex;align-items:center;gap:10px;margin-top:12px;padding-top:10px;border-top:1px dashed var(--bd2);">
       <span style="font-family:var(--mono);font-size:12px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--tx);">Verdict:</span>${verdictTagHTML(ll.verdict)}</div>`;
     out=`<div class="msg-bubble msg-bubble-out" style="background:${tint};border-color:${edge};box-shadow:${justLogged?'0 0 18px var(--okbd)':'none'};transition:box-shadow .3s;">
-      <div style="padding-bottom:18px;">${predictSymRow(ll.seq,OUTPUT_CODEX,tx.seed)}</div>
-      ${probabilityBarHTML(probabilityTier(score,greedyScore(txIdx)),score,verdictRow)}
+      <div style="padding-bottom:18px;">${predictSymRow(ll.seq,OUTPUT_CODEX,tx.seed,noEng)}</div>
+      <div style="display:flex;">${scoreTagHTML(score,greedyScore(txIdx))}</div>${verdictRow}
     </div>`;
   } else {
     out=`<div class="msg-bubble msg-bubble-out" style="background:transparent;border:1px dashed ${edge};"><span style="font-size:13px;color:var(--mu);font-style:italic;">No response sequence logged yet</span></div>`;
@@ -2480,7 +2513,7 @@ function phase2ThreadHTML(txIdx,who){
       <div class="msg-avatar">X7</div>
       <div style="min-width:0;">
         <div class="msg-meta">${MSG_ICON_IN}Demo question ${txIdx+1} received from demo script.</div>
-        <div class="msg-bubble msg-bubble-in">${predictSymRow(tx.inputSeq,INPUT_CODEX,null)}</div>
+        <div class="msg-bubble msg-bubble-in">${predictSymRow(tx.inputSeq,INPUT_CODEX,null,noEng)}</div>
       </div>
     </div>
     <div class="msg-line msg-line-out">
@@ -2511,8 +2544,8 @@ function showConfirmSendP2Tx1(){
     return;
   }
   if(ll.verdict!=='verified'){
-    p2ModalLocal(`<div class="modal-title" style="color:var(--err);">⚠ Not a verified truth</div>
-      <div style="font-size:15px;color:var(--tx);line-height:1.7;margin-bottom:16px;">Your transmission 1 is not a verified truth. Go back and review it.</div>
+    p2ModalLocal(`<div class="modal-title" style="color:var(--err);">⚠ Not a fact</div>
+      <div style="font-size:15px;color:var(--tx);line-height:1.7;margin-bottom:16px;">Your transmission 1 is not a fact. Go back and review it.</div>
       <button class="btn" onclick="closeP2NotVerified()">Go back</button>`,'closeP2NotVerified()');
     return;
   }
@@ -2544,11 +2577,13 @@ function greedyPath(txIdx){
 }
 const PATH_COLOR_HIGHEST='#ff5fd2', PATH_COLOR_PHASE1='#b69cff';
 function legendRowHTML(color,dash,name,evalHTML,verdictHTML){
-  return `<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 0;border-top:1px solid var(--bd2);">
+  return `<div style="display:grid;grid-template-columns:44px minmax(0,1fr) auto;align-items:center;column-gap:14px;padding:12px 14px;margin-top:8px;border:1px solid var(--bd2);border-radius:8px;background:rgba(255,255,255,0.025);">
     <svg width="44" height="10" style="flex-shrink:0;"><line x1="2" y1="5" x2="42" y2="5" stroke="${color}" stroke-width="4" stroke-linecap="round" ${dash?`stroke-dasharray="${dash}"`:''}/></svg>
-    <div style="flex:1;min-width:150px;font-family:var(--mono);font-size:13px;font-weight:700;color:var(--tx);">${name}</div>
-    <div style="font-family:var(--mono);font-size:13px;color:var(--tx);">${evalHTML}</div>
-    <div style="min-width:140px;text-align:right;font-family:var(--mono);font-size:12px;color:var(--mu);">${verdictHTML}</div>
+    <div style="min-width:0;">
+      <div style="font-family:var(--mono);font-size:15px;font-weight:700;color:var(--tx);line-height:1.35;">${name}</div>
+      <div style="font-family:var(--mono);font-size:14px;color:var(--mu);margin-top:4px;">${evalHTML}</div>
+    </div>
+    <div style="text-align:right;font-family:var(--mono);font-size:13px;color:var(--mu);">${verdictHTML}</div>
   </div>`;
 }
 function tierEvalHTML(txIdx,seq){
@@ -2558,28 +2593,28 @@ function tierEvalHTML(txIdx,seq){
 /* Lattice-controller view (Phase 2): working zone with probabilities + 3 highlighted paths + legend. */
 /* Concept strip: ties parts of the Phase 2 screen back to the explainer animation (static, no new interactions) */
 function p2ConceptStripHTML(items){
-  const cell=(n,t,d)=>`<div style="flex:1 1 210px;min-width:0;display:flex;gap:10px;align-items:flex-start;">
-    <span style="flex-shrink:0;width:22px;height:22px;border-radius:50%;background:rgba(255,209,102,0.14);border:2px solid #ffd166;color:#ffd166;font-family:var(--mono);font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;margin-top:1px;">${n}</span>
-    <div style="font-family:var(--mono);font-size:12.5px;line-height:1.5;color:var(--mu);"><strong style="color:var(--tx);">${t}</strong><br>${d}</div></div>`;
-  const rw=(id,lbl)=>`<button onclick="exOpenModal('p1','${id}')" style="background:transparent;border:1px solid rgba(255,209,102,0.45);border-radius:4px;color:#ffd166;font-family:var(--mono);font-size:11.5px;font-weight:700;padding:3px 10px;cursor:pointer;">${lbl}</button>`;
+  const cell=(n,t,d)=>`<div style="flex:1 1 260px;min-width:0;display:flex;gap:12px;align-items:flex-start;">
+    <span style="flex-shrink:0;width:28px;height:28px;border-radius:50%;background:rgba(255,209,102,0.14);border:2px solid #ffd166;color:#ffd166;font-family:var(--mono);font-size:14px;font-weight:700;display:flex;align-items:center;justify-content:center;margin-top:1px;">${n}</span>
+    <div style="font-family:var(--mono);font-size:15px;line-height:1.5;color:var(--mu);"><strong style="color:var(--tx);">${t}</strong><br>${d}</div></div>`;
+  const rw=(id,lbl)=>`<button onclick="exOpenModal('p1','${id}')" style="background:transparent;border:1px solid rgba(255,209,102,0.45);border-radius:4px;color:#ffd166;font-family:var(--mono);font-size:14px;font-weight:700;padding:6px 14px;cursor:pointer;">${lbl}</button>`;
   const hl=!!S.p2infoHL;
   return `<div id="p2-llm-box" class="${hl?'p2-hl':''}" style="border:1px solid rgba(255,209,102,0.35);border-radius:8px;background:rgba(255,209,102,0.04);padding:12px 14px;margin:0 0 14px;">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;">
-      <span style="font-family:var(--font-head);font-size:10.5px;font-weight:700;letter-spacing:.18em;color:#ffd166;">WHAT YOU NEED TO KNOW ABOUT LARGE LANGUAGE MODELS (LLMs)${hl?' &nbsp;·&nbsp; REVIEW THIS':''}</span>
+      <span style="font-family:var(--font-head);font-size:12.5px;font-weight:700;letter-spacing:.16em;color:#ffd166;">WHAT YOU NEED TO KNOW ABOUT LARGE LANGUAGE MODELS (LLMs)${hl?' &nbsp;·&nbsp; REVIEW THIS':''}</span>
     </div>
     <div style="display:flex;flex-wrap:wrap;gap:14px 20px;">${items.map((x,i)=>cell(i+1,x[0],x[1])).join('')}</div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,209,102,0.2);">${rw('llm',S.p2tx1Sent?'▶ Rewatch: how XENOX-7 works':'▶ Rewatch')}${S.p2tx1Sent?rw('halluc','▶ Rewatch: why LLMs hallucinate'):''}</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,209,102,0.2);">${rw('llm','▶ Rewatch: how XENOX-7 works')}${S.p2tx1Sent?rw('halluc','▶ Rewatch: why LLMs hallucinate'):''}</div>
   </div>`;
 }
 const P2_STRIP_LATTICE=[
-  ['LLMs build outputs one token at a time','Each symbol is one token, chosen one at a time based on the tokens before it. The symbols you see in the game are a metaphor.'],
-  ['Each token has a probability','The numbers show how likely each candidate is as the next token.'],
-  ['Each token builds on the last','The probability depends on the token chosen just before, so changing one token changes the next column.']
+  ['LLMs build outputs one token at a time','Each symbol here represents one token.'],
+  ['Each token has a probability','Some are more likely than others.'],
+  ['Each token\'s probability depends on the ones chosen before it','Changing one token changes the next.']
 ];
 const P2_STRIP_PATH=[
-  ['The probability between tokens','The number between two tokens is how probable the second token was, given the tokens before it.'],
-  ['LLMs do not understand English','XENOX-7 never reads the English translation. It only works with tokens and probabilities. The symbols you see in the game are a metaphor.'],
-  ['LLMs check for probability, not truth','XENOX-7 produces a likely output, but it does not check whether that output is true.']
+  ['LLMs do not understand English','They only work with tokens and probabilities.'],
+  ['The number between two tokens is a probability','It shows how likely the next token is, given the ones before it.'],
+  ['LLMs check for probability, not truth','They produce a likely output but do not check if it\'s true.']
 ];
 function phase2WorkzoneHTML(txIdx,who){
   const isP2=who==='p2';
@@ -2603,20 +2638,28 @@ function phase2WorkzoneHTML(txIdx,who){
   const complete=isComplete2(txIdx);
   const logged=complete?S.p2logs[txIdx].find(e=>e.seq.every((g,i)=>g===sel[i])):null;
   rows+=legendRowHTML(isP2?'#ff6b35':'#00d4ff',null,'Path you are building',
-    complete?tierEvalHTML(txIdx,sel):'<span style="color:var(--mu);">Select all 5 tokens</span>',
+    !complete?'<span style="color:var(--mu);">Select all 5 tokens</span>':(logged?tierEvalHTML(txIdx,sel):'<span style="color:var(--mu);">Log it to see its probability</span>'),
     complete?(logged?vLbl(logged.verdict):'Log it to see its verdict'):'—');
   return `<div class="sec"><div class="workstation-card${cls}">
     <div class="workstation-hdr${cls}">Your Workstation — Reconstruct Your Response</div>
     <div class="workstation-body">
       ${p2ConceptStripHTML(P2_STRIP_LATTICE)}
-      <div class="sec-lbl" style="margin-bottom:10px;">Given all prior tokens selected, probabilities for the next token are...</div>
-      ${renderNeuralLattice({lattice,sel,accentColor:acc,selectFnName:'selectCell2',txIdx,p1seq:null,showSymbols:true,showScores:true,clickable:true,lockCol0:true,paths})}
-      <div style="margin-top:12px;">${rows}</div>
-      <div style="margin-top:8px;font-size:12.5px;color:var(--mu);font-family:var(--mono);">Probability = how likely the model is to produce a path. Verdict = whether that path is true.</div>
-      <div class="btn-row" style="margin-top:16px;">
-        <button class="btn ${btnCls}" onclick="logSequence2(${txIdx})" ${!complete?'disabled':''}>Log response sequence</button>
+      <div class="ws-grid">
+        <div class="ws-left">
+          <div class="sec-lbl" style="margin:0 0 10px;">Construct the response path to transmission ${txIdx+1} using this lattice:</div>
+          ${renderNeuralLattice({lattice,sel,accentColor:acc,selectFnName:'selectCell2',txIdx,p1seq:null,showSymbols:true,showScores:false,clickable:true,lockCol0:true,paths})}
+        </div>
+        <div class="ws-right">
+          <div class="sec-lbl" style="margin:0 0 4px;">Compare paths</div>
+          <div>${rows}</div>
+          ${loggedPathBarHTML(txIdx,sel,lastLog2(txIdx))}
+          <div style="margin-top:12px;font-size:13.5px;line-height:1.5;color:var(--mu);font-family:var(--mono);">Probability = how likely the model is to produce a path. Verdict = whether that path is true.</div>
+          <div class="btn-row" style="margin-top:14px;">
+            <button class="btn ${btnCls}" onclick="logSequence2(${txIdx})" ${!complete?'disabled':''}>Log response sequence</button>
+          </div>
+          <button class="btn btn-err btn-sm" onclick="clearSel2(${txIdx})">Clear path</button>
+        </div>
       </div>
-      <button class="btn btn-err btn-sm" onclick="clearSel2(${txIdx})">Clear path</button>
     </div>
   </div></div>`;
 }
@@ -2628,20 +2671,13 @@ function phase2CodexViewHTML(txIdx,who){
   const initSeq=ll1?ll1.seq:[];
   const sel=S.p2sel[txIdx];
   let h=phase2ThreadHTML(txIdx,who);
-  // Whole-path qualitative bar: live — scores the steps selected so far against the greedy path's same steps
-  let k=0,partial=0,partialMax=0;
-  const gp=greedyPath(txIdx);
-  for(let i=0;i<4;i++){if(sel[i]&&sel[i+1]){k++;partial+=getBigram(sel[i],sel[i+1]);partialMax+=getBigram(gp[i],gp[i+1]);}else break;}
-  const pathBar=k>0
-    ?`<div style="border:1px solid var(--bd2);border-radius:8px;overflow:hidden;background:var(--bg-panel);padding:0 18px 14px;margin-top:12px;">${probabilityBarHTML(probabilityTier(partial,partialMax),partial)}</div>`
-    :'';
   h+=`<div class="sec">${p2ConceptStripHTML(P2_STRIP_PATH)}<div class="sec-lbl">Current path + live translation</div>
     ${seqWithProbs(sel,acc,initSeq,true)}
     ${initSeq.length?`<div style="display:flex;gap:18px;font-size:13px;margin-top:6px;padding:0 2px;color:var(--tx);">
       <span style="display:flex;align-items:center;gap:6px;"><span style="width:12px;height:12px;border-radius:3px;background:rgba(143,179,217,0.14);border:2px solid #8fb3d9;display:inline-block;"></span>Same as initial</span>
       <span style="display:flex;align-items:center;gap:6px;"><span style="width:12px;height:12px;border-radius:3px;background:rgba(195,155,255,0.18);border:2px solid #c39bff;display:inline-block;"></span>Changed</span>
     </div>`:''}
-    ${pathBar}
+    ${loggedPathBarHTML(txIdx,sel,lastLog2(txIdx)||lastLog1(txIdx))}
   </div>`;
   h+=`<div class="sec"><div class="btn-row">
     <button class="btn ${btnCls}" onclick="logSequence2(${txIdx})" ${!isComplete2(txIdx)?'disabled':''}>Log response sequence</button>
@@ -2660,17 +2696,30 @@ function phase2ScreenHTML(who){
   }
   return h;
 }
+const BRIEF_GLOW={ms:4800,start:{},timer:null};
+function briefGlow(key){   // first time this brief is drawn on this screen → pulse it and dim the rest; re-renders continue the pulse instead of restarting it
+  if(!BRIEF_GLOW.start[key]){
+    BRIEF_GLOW.start[key]=Date.now();
+    document.body.classList.add('brief-spot');
+    clearTimeout(BRIEF_GLOW.timer);
+    BRIEF_GLOW.timer=setTimeout(()=>document.body.classList.remove('brief-spot'),BRIEF_GLOW.ms);
+  }
+  const el=Date.now()-BRIEF_GLOW.start[key];
+  if(el>=BRIEF_GLOW.ms) return {cls:'',style:''};
+  return {cls:' brief-glow',style:`animation-delay:-${(el/1000).toFixed(2)}s;`};
+}
 function missionBriefBoxHTML(){
+  const g=briefGlow('phase1');
   const line=(pathSvg, html)=>`<div style="display:flex;align-items:flex-start;gap:12px;">
-    <svg viewBox="0 0 24 24" fill="none" stroke="var(--p1)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;width:18px;height:18px;margin-top:2px;">${pathSvg}</svg>
-    <span style="font-family:var(--mono);font-size:14px;color:var(--mu);line-height:1.65;">${html}</span>
+    <svg viewBox="0 0 24 24" fill="none" stroke="var(--p1)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;width:22px;height:22px;margin-top:2px;">${pathSvg}</svg>
+    <span style="font-family:var(--mono);font-size:16px;color:var(--mu);line-height:1.5;">${html}</span>
   </div>`;
-  return `<div class="sec">
-    <div style="max-width:780px;margin:0 auto;background:var(--bg-panel);
+  return `<div class="sec brief-sec">
+    <div class="brief-card${g.cls}" style="${g.style}max-width:1260px;margin:0 auto;background:var(--bg-panel);
       border-top:1px solid var(--p1bd);border-bottom:1px solid var(--p1bd);
-      padding:16px 24px;box-shadow:0 0 20px rgba(0,212,255,0.08);">
-      <div style="font-family:var(--font-head);font-size:11px;font-weight:700;letter-spacing:.2em;
-        color:var(--p1);text-shadow:0 0 8px rgba(0,212,255,0.4);margin-bottom:14px;text-align:center;">MISSION BRIEF</div>
+      padding:16px 28px;box-shadow:0 0 20px rgba(0,212,255,0.08);">
+      <div style="font-family:var(--font-head);font-size:13px;font-weight:700;letter-spacing:.2em;
+        color:var(--p1);text-shadow:0 0 8px rgba(0,212,255,0.4);margin-bottom:12px;text-align:center;">MISSION BRIEF</div>
       <div style="display:flex;flex-direction:column;gap:12px;">
         ${line('<path d="M12 2a10 10 0 0 1 10 10"/><path d="M12 6a6 6 0 0 1 6 6"/><circle cx="12" cy="12" r="1.6" fill="var(--p1)" stroke="none"/>',
           'XENOX-7 is Dr. Searle\'s <strong style="color:var(--tx);">Large Language Model</strong> <button onclick="showLLMInfo()" style="background:transparent;border:1px solid var(--p1bd);border-radius:4px;color:var(--p1);font-family:var(--mono);font-size:11px;letter-spacing:.06em;padding:1px 8px;margin:0 2px;cursor:pointer;vertical-align:1px;" onmouseover="this.style.background=\'var(--p1lt)\'" onmouseout="this.style.background=\'transparent\'">Learn more</button>.')}
@@ -2708,6 +2757,17 @@ function probabilityTier(score,maxScore){
 function stepTierL(v){return stepTier(v/DISP_SCALE);} // tier for lattice-scale step numbers
 function stepTier(v){return v>=75?'highest':v>=55?'high':v>=30?'medium':'low';}
 const STEP_COLOR={low:'#ff4757',medium:'#ffd23f',high:'#7ddc5a',highest:'#00ff88'};
+function scoreTagHTML(score,maxScore){
+  const tier=probabilityTier(score,maxScore), tcol=PROB_TIER_COLOR[tier];
+  return `<span style="align-self:flex-start;font-family:var(--mono);font-size:14px;font-weight:700;padding:3px 10px;border-radius:4px;background:${tcol}22;border:1px solid ${tcol};color:${tcol};">Probability score: ${PROB_TIER_LABEL[tier]} (${score})</span>`;
+}
+/* Scale shown beside the current path ONLY while the path on screen is exactly the last logged response; changing any token hides it */
+function loggedPathBarHTML(txIdx,sel,ll){
+  if(!ll||!sel||sel.length<5||ll.seq.length<5) return '';
+  for(let i=0;i<5;i++){ if(sel[i]!==ll.seq[i]) return ''; }
+  const sc=pathScore(ll.seq);
+  return `<div style="border:1px solid var(--bd2);border-radius:8px;overflow:hidden;background:var(--bg-panel);padding:0 18px 14px;margin:14px 0 4px;">${probabilityBarHTML(probabilityTier(sc,greedyScore(txIdx)),sc)}</div>`;
+}
 function probabilityBarHTML(tier,scoreNum,extraHTML){
   // Rendered as the footer of the "sent" message bubble (see messageThreadHTML):
   // it reads as a delivery-receipt style readout about THIS response, not a separate widget.
@@ -2742,7 +2802,7 @@ function messageThreadHTML(tx, txIdx, who, accentColor){
   const score=ll?pathScore(ll.seq):null;
   const maxScore=greedyScore(txIdx);
   const justLogged=S.lastLogged&&S.lastLogged.txIdx===txIdx&&Date.now()-S.lastLogged.time<2000;
-  const probabilityBar=ll?probabilityBarHTML(probabilityTier(score,maxScore)):'';
+  const probabilityBar=ll?`<div style="margin-top:14px;display:flex;">${scoreTagHTML(score,maxScore)}</div>`:'';
   const tint=who==='p2'?'var(--p2lt)':'var(--p1lt)';
   const edge=who==='p2'?'var(--p2bd)':'var(--p1bd)';
   const sentGlow=justLogged?'0 0 18px var(--okbd)':'none';
@@ -2827,7 +2887,7 @@ function phase1WorkstationHTML(txIdx, who){
           const arrow=`<div style="display:flex;flex-direction:column;align-items:center;gap:3px;"><div style="height:54px;display:flex;align-items:center;"><span class="path-arrow">→</span></div><span style="font-size:9px;visibility:hidden;">·</span></div>`;
           return col<4?labeled+arrow:labeled;
         }).join('')}
-      </div>`;
+      </div>${loggedPathBarHTML(txIdx,sel,lastLog1(txIdx))}`;
     const latticeBlock=`<div class="sec-lbl" style="margin:18px 0 10px;">Construct the response path to transmission ${txIdx+1} using this lattice:</div>
       ${renderNeuralLattice({lattice,sel,accentColor:acc,selectFnName:'selectCell1',txIdx,p1seq:null,showSymbols:true,showScores:false,clickable:true,lockCol0:true})}`;
     const actionButtons=`<div class="btn-row" style="margin-top:16px;">
@@ -2839,7 +2899,7 @@ function phase1WorkstationHTML(txIdx, who){
       <div class="workstation-body">${pathRow}${latticeBlock}${actionButtons}</div>
     </div></div>`+send;
   }
-  const latticeBlock=`<div class="sec-lbl" style="margin-bottom:10px;">Given all prior tokens selected, probabilities for the next token are...</div>
+  const latticeBlock=`${loggedPathBarHTML(txIdx,sel,lastLog1(txIdx))}<div class="sec-lbl" style="margin:14px 0 10px;">Given all prior tokens selected, probabilities for the next token are...</div>
     ${renderNeuralLattice({lattice,sel,accentColor:acc,selectFnName:'selectCell1',txIdx,p1seq:null,showSymbols:false,showScores:true,clickable:false,lockCol0:true})}`;
   const actionButtons=`<div class="btn-row" style="margin-top:16px;">
     <button class="btn ${btnCls}" onclick="logSequence1(${txIdx})" ${!isComplete1(txIdx)?'disabled':''}>Log response sequence</button>
