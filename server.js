@@ -223,7 +223,7 @@ wss.on('connection', (ws, req) => {
       roomState.p2 = null;
       roomState.room = null;
       console.log('Session reset by admin — all puzzle states cleared');
-      const cleared = JSON.stringify({ type: 'room', room: roomState });
+      const cleared = JSON.stringify({ type: 'room', room: roomState, reset: true });
       wss.clients.forEach(client => {
         if (client.readyState === 1) client.send(cleared);
       });
