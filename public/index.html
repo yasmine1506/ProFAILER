@@ -3416,7 +3416,7 @@ function initView() {
 }
 
 // Guard: only render the locked view (or both for local testing)
-function renderAll() {
+function renderAllCore() {
   if (S.finale && finaleRenderAll()) return;
   FL.lastKey = {}; FL.seenStage = null;
   if (LOCKED_VIEW === 'p1') { renderP1(); return; }
@@ -3424,6 +3424,16 @@ function renderAll() {
   if (LOCKED_VIEW === 'shared') { renderSharedOnly(); return; }
   renderP1(); renderP2(); // local testing — render both
 }
+/* New screen (phase, stage or transmission changed) → start at the top, so players see the mission brief instead of wherever the previous screen was scrolled to */
+let _screenKey = null;
+function scrollToTopOnNewScreen() {
+  const key = [S.phase, S.p2stage, S.activeTx, S.p2activeTx, S.p2transmitted ? 1 : 0, S.finale ? 1 : 0].join('|');
+  if (key === _screenKey) return;
+  _screenKey = key;
+  const top = () => ['p1-content', 'p2-content', 'shared-main'].forEach(id => { const e = document.getElementById(id); if (e) e.scrollTop = 0; });
+  top(); requestAnimationFrame(top); setTimeout(top, 120);
+}
+function renderAll() { renderAllCore(); scrollToTopOnNewScreen(); }
 
 function renderSharedOnly() {
   const el = document.getElementById('shared-main');
