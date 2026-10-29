@@ -3081,7 +3081,20 @@ function syncableState() {
   return s;
 }
 
+/* ── state versioning: every send is stamped (revision counter + window id), so a stale snapshot can never overwrite newer local progress ── */
+const CID = Math.random().toString(36).slice(2, 8);   // identifies this browser window
+function stampState() { S._rev = (S._rev || 0) + 1; S._cid = CID; }
+function remoteIsNewer(r) {
+  const rr = r._rev || 0, lr = S._rev || 0;
+  return rr > lr || (rr === lr && rr > 0 && String(r._cid || '') > String(S._cid || ''));
+}
+function localIsNewer(r) {
+  const rr = r._rev || 0, lr = S._rev || 0;
+  return lr > rr || (lr === rr && lr > 0 && String(S._cid || '') > String(r._cid || ''));
+}
 function applyRemoteState(remote) {
+  // Ignore a stale or duplicate snapshot (e.g. the server's copy after a reconnect) — still keep its log rows
+  if (!remoteIsNewer(remote)) { mergeEventLog(remote.eventLog); return; }
   // Merge remote state, preserving our local-only flags
   for (const k of Object.keys(remote)) {
     if (!LOCAL_KEYS.has(k) && k !== 'eventLog' && k !== 'sessionId') S[k] = remote[k];
@@ -3134,12 +3147,16 @@ function connectWS(forceReset = false) {
     }
     if (msg.type === 'room' && msg.room && msg.room.p2) {
       applyRemoteState(msg.room.p2);
+      if (localIsNewer(msg.room.p2)) pushState();   // we have progress the server does not (reconnect) — send it back
     }
-    // Admin reset — clear puzzle state
     if (msg.type === 'room' && msg.room && msg.room.p2 === null) {
-      resetKeepingLog();
-      renderAll();
-      renderModal();
+      if (msg.reset) {            // real admin reset — clear puzzle state
+        resetKeepingLog();
+        renderAll();
+        renderModal();
+      } else if ((S._rev || 0) > 0) {
+        pushState();              // server lost its copy (restart / everyone disconnected) — restore it from this screen, do NOT reset the game
+      }
     }
   };
 
@@ -3156,11 +3173,12 @@ function connectWS(forceReset = false) {
   };
 }
 
-function syncState() {
+function pushState() {
   if (ws && wsConnected) {
     ws.send(JSON.stringify({ type: 'state', puzzle: 'p2', state: syncableState() }));
   }
 }
+function syncState() { stampState(); pushState(); }
 
 function updateConnectionBadge(connected) {
   const dot = document.getElementById('conn-dot');
