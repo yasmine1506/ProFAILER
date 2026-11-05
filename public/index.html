@@ -425,6 +425,12 @@ body.brief-spot #p1-content .sec:not(.brief-sec),body.brief-spot #p2-content .se
 .ws-right{flex:1 1 0;min-width:0;}
 .ws-right .btn-row{display:flex;}
 @media (max-width:1150px){.ws-grid{flex-direction:column;gap:18px;}.ws-left,.ws-right{flex:none;width:100%;}}
+#p1Timer{position:fixed;top:4px;right:230px;z-index:1500;display:none;font-family:var(--mono,'Share Tech Mono',monospace);font-size:17px;line-height:1.2;font-weight:700;letter-spacing:.06em;color:#e6f1ff;background:rgba(7,16,30,.95);border:2px solid #3a5a80;border-radius:8px;padding:3px 12px;box-shadow:0 2px 12px rgba(0,0,0,.45);pointer-events:none;}
+#p1Timer.warn{color:#ffd166;border-color:#ffd166;}
+#p1Timer.low{color:#ff6b6b;border-color:#ff6b6b;animation:p1TimerPulse 1s ease-in-out infinite;}
+#p1Timer.zero{color:#ff6b6b;border-color:#ff6b6b;}
+@media (max-width:1100px){#p1Timer{top:40px;right:12px;}}
+@keyframes p1TimerPulse{50%{box-shadow:0 0 16px rgba(255,107,107,.7);}}
 </style>
 </head>
 <body>
@@ -1077,10 +1083,43 @@ function maybeShowBriefing() {
 
 function beginMission() {
   const agent = briefingAgentFor();
-  if (agent) missionBegun[agent] = true;
+  if (agent) { missionBegun[agent] = true; markMissionBegun(agent); }
   brStop();
   document.getElementById('briefingOverlay').classList.add('hidden');
 }
+
+/* ── Phase 1 countdown (20 min): purely visual. Running out has NO effect on the puzzle. ──
+   Starts once BOTH players have begun their mission (state is shared, so reloads and reconnects keep the same clock). */
+const P1_TIMER_MS = 20 * 60 * 1000;
+function p1TimerActive() { return !!(S.phase === 1); }
+function markMissionBegun(agent) {
+  if (!agent) return;
+  S.mb = S.mb || {};
+  S.mb[agent] = true;
+  p1TimerTick();
+  syncState();
+}
+function p1TimerTick() {
+  const me = (typeof briefingAgentFor === 'function') ? briefingAgentFor() : null;
+  if (me && missionBegun[me] && !(S.mb || {})[me]) { S.mb = S.mb || {}; S.mb[me] = true; syncState(); }   // re-assert my flag if a simultaneous update dropped it
+  const mb = S.mb || {};
+  if (!S.p1TimerStart && p1TimerActive() && mb.p1 && mb.p2) { S.p1TimerStart = Date.now(); syncState(); }
+  let el = document.getElementById('p1Timer');
+  if (!p1TimerActive() || !S.p1TimerStart) { if (el) el.style.display = 'none'; return; }
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'p1Timer';
+    el.setAttribute('role', 'timer');
+    el.setAttribute('aria-label', 'Phase 1 time remaining');
+    document.body.appendChild(el);
+  }
+  const left = Math.max(0, Math.min(P1_TIMER_MS, P1_TIMER_MS - (Date.now() - S.p1TimerStart)));
+  const m = Math.floor(left / 60000), sec = Math.floor((left % 60000) / 1000);
+  el.textContent = '\u23F1 ' + String(m).padStart(2, '0') + ':' + String(sec).padStart(2, '0');
+  el.className = left === 0 ? 'zero' : left <= 60000 ? 'low' : left <= 300000 ? 'warn' : '';
+  el.style.display = 'block';
+}
+setInterval(p1TimerTick, 1000);
 
 // Phase 1 actions
 function selectCell1(txIdx,col,row){
@@ -2672,6 +2711,10 @@ function phase2CodexViewHTML(txIdx,who){
   const sel=S.p2sel[txIdx];
   let h=phase2ThreadHTML(txIdx,who);
   h+=`<div class="sec">${p2ConceptStripHTML(P2_STRIP_PATH)}<div class="sec-lbl">Current path + live translation</div>
+    <div style="display:flex;gap:12px;align-items:flex-start;margin:4px 0 14px;padding:10px 14px;border-left:4px solid #b78cff;background:rgba(183,140,255,0.08);border-radius:0 8px 8px 0;font-family:var(--mono);font-size:15px;line-height:1.5;color:var(--tx);">
+      <span style="flex-shrink:0;font-weight:700;color:#b78cff;">Note</span>
+      <span>Real LLMs do not use symbols: their tokens are whole words or pieces of words, like "trans" + "mit", stored as numbers.</span>
+    </div>
     ${seqWithProbs(sel,acc,initSeq,true)}
     ${initSeq.length?`<div style="display:flex;gap:18px;font-size:13px;margin-top:6px;padding:0 2px;color:var(--tx);">
       <span style="display:flex;align-items:center;gap:6px;"><span style="width:12px;height:12px;border-radius:3px;background:rgba(143,179,217,0.14);border:2px solid #8fb3d9;display:inline-block;"></span>Same as initial</span>
