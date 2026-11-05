@@ -3470,7 +3470,8 @@ function renderAllCore() {
 /* New screen (phase, stage or transmission changed) → start at the top, so players see the mission brief instead of wherever the previous screen was scrolled to */
 let _screenKey = null;
 function scrollToTopOnNewScreen() {
-  const key = [S.phase, S.p2stage, S.activeTx, S.p2activeTx, S.p2transmitted ? 1 : 0, S.finale ? 1 : 0].join('|');
+  const me = evPlayer();   // my own explainer progress: finishing a video swaps the page without changing phase/stage, so it must count as a new screen
+  const key = [S.phase, S.p2stage, S.activeTx, S.p2activeTx, S.p2transmitted ? 1 : 0, S.finale ? 1 : 0, (S.explainDone || {})[me] ? 1 : 0, (S.explain2Done || {})[me] ? 1 : 0, S.p2tx1Sent ? 1 : 0].join('|');
   if (key === _screenKey) return;
   _screenKey = key;
   const top = () => ['p1-content', 'p2-content', 'shared-main'].forEach(id => { const e = document.getElementById(id); if (e) e.scrollTop = 0; });
