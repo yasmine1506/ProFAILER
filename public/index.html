@@ -736,6 +736,7 @@ function resetKeepingLog(){
   const keep=S.eventLog, old=S.sessionId;
   // First connection to the server also reports 'no saved state yet' — that is not a real reset, so don't close a session for it
   if(!keep.some(e=>e.session===old&&e.event!=='page_loaded'&&e.event!=='game_reset')){ S=freshState(); S.eventLog=keep; S.sessionId=old; return; }
+  try{screenTrack(null,'game_reset');}catch(e){}
   logEvent('flow','game_reset');
   if(IS_ADMIN && old && keep.some(e=>e.session===old&&e.event!=='game_reset')){ try{ exportP2Log(old); }catch(e){} }
   S=freshState(); S.eventLog=keep; S.sessionId=newSessionId();
@@ -802,6 +803,37 @@ function logEvent(task, event, f){
     logAfterPush(e);
   }catch(err){}
 }
+/* ── time on each consolidation (Phase 2) screen: one 'screen/enter' row and one 'screen/exit' row (with seconds) per visit ── */
+const SCR={id:null,t:0,hid:0,hidSince:0,session:null};
+document.addEventListener('visibilitychange',()=>{   // time the tab was hidden is tracked separately (active_s = duration_s minus hidden time)
+  if(document.hidden)SCR.hidSince=Date.now();
+  else if(SCR.hidSince){SCR.hid+=Date.now()-SCR.hidSince;SCR.hidSince=0;}
+});
+function screenTrack(newId,reason){
+  try{
+    if(newId===SCR.id)return;
+    const now=Date.now();
+    if(SCR.id){
+      const hid=SCR.hid+(SCR.hidSince?now-SCR.hidSince:0);
+      const f={item:SCR.id,phase:2,detail_duration_s:Math.round((now-SCR.t)/100)/10,detail_active_s:Math.round(Math.max(0,now-SCR.t-hid)/100)/10,detail_reason:reason||'next_screen'};
+      if(SCR.session)f.session=SCR.session;
+      logEvent('screen','exit',f);
+    }
+    SCR.id=newId||null;
+    if(SCR.id){SCR.t=now;SCR.hid=0;SCR.hidSince=document.hidden?now:0;SCR.session=S.sessionId;logEvent('screen','enter',{item:SCR.id,phase:2});}
+  }catch(err){}
+}
+function p2ScreenId(){   // mirrors what renderP1/renderP2 show in Phase 2 for THIS player
+  if(S.phase!==2)return null;
+  const me=evPlayer();
+  if(S.finale)return'finale';
+  if(S.p2stage==='predict')return'predict';
+  if(!S.explainDone[me])return'explainer_llm';
+  if(S.p2tx1Sent&&!S.explain2Done[me])return'explainer_halluc';
+  return'workstation_tx'+(S.p2activeTx+1)+'_'+(p2CodexHolder(S.p2activeTx)===me?'codex_holder':'rebuilder');
+}
+function p2ScreenTick(){try{screenTrack(p2ScreenId());}catch(err){}}
+setInterval(p2ScreenTick,1000);
 function mergeEventLog(remoteLog){
   if(!Array.isArray(remoteLog)) return;
   const byId=new Map(); S.eventLog.forEach(e=>byId.set(e.id,e)); remoteLog.forEach(e=>{if(!byId.has(e.id))byId.set(e.id,e);});
@@ -1157,9 +1189,17 @@ function submitInputTranslation(txIdx){
   renderAll();
 }
 
-function showLogModal(who){logEvent('response_log','open',{player:evPlayer(who),tx:(S.phase===1?S.activeTx:S.p2activeTx)+1});S.showLogModal=who;renderModal();}
-function showLLMInfo(){logEvent('learn_more','open',{player:evPlayer()});S.showLLMModal=true;renderModal();}
-function closeModal(){S.showLLMModal=false;S.showLogModal=null;S.showConfirm=false;S.showResultModal=false;renderModal();}
+const _modalOpenedAt={learn_more:0,response_log:0};
+const _openSecs=k=>_modalOpenedAt[k]?Math.round((Date.now()-_modalOpenedAt[k])/100)/10:'';
+function showLogModal(who){logEvent('response_log','open',{player:evPlayer(who),tx:(S.phase===1?S.activeTx:S.p2activeTx)+1});_modalOpenedAt.response_log=Date.now();S.showLogModal=who;renderModal();}
+function showLLMInfo(){logEvent('learn_more','open',{player:evPlayer()});_modalOpenedAt.learn_more=Date.now();S.showLLMModal=true;renderModal();}
+function closeModal(){
+  try{   // one 'close' row (with seconds open) for the learn-more box / response log, however it was closed (✕, outside click, Go back)
+    if(S.showLLMModal){logEvent('learn_more','close',{player:evPlayer(),detail_open_s:_openSecs('learn_more')});_modalOpenedAt.learn_more=0;}
+    if(S.showLogModal){logEvent('response_log','close',{player:evPlayer(S.showLogModal),tx:(S.phase===1?S.activeTx:S.p2activeTx)+1,detail_open_s:_openSecs('response_log')});_modalOpenedAt.response_log=0;}
+  }catch(e){}
+  S.showLLMModal=false;S.showLogModal=null;S.showConfirm=false;S.showResultModal=false;renderModal();
+}
 function showConfirmTransmit(){
   if(S.phase===2){
     // Phase 2: check both transmissions have a phase 2 log
@@ -2374,10 +2414,33 @@ function narNote(){
   else if(NAR.failed&&NAR.on){n.textContent='⚠ Narration is not working in this browser ('+(NAR.err||'unknown reason')+'). Tap the sound button to try again.';n.style.display='block';}
   else n.style.display='none';
 }
-document.addEventListener('visibilitychange',()=>{if(document.hidden&&document.getElementById('ex-stage')){EX.playing=false;narSync();}});
+/* ── research log for the explainer videos: play / pause / ended / seek / prev / restart / close (every state change of EX.playing is caught in one place) ── */
+const EXL={on:false,playing:false,src:'',first:0,modal:0,anim:null,modalAt:0};
+function exLog(event,extra){
+  try{logEvent('explainer',event,Object.assign({player:evPlayer(),item:EX.anim,detail_t_s:Math.round(EX.t*10)/10,detail_part:exSceneIndex(EX.t)+1,first_playthrough:EXL.first,detail_modal:EXL.modal},extra||{}));}catch(e){}
+}
+function exLogTick(){
+  if(!EXL.on||EX.playing===EXL.playing)return;
+  if(!EX.playing&&EX.t>=EX_TOTAL-0.001)exLog('ended');
+  else exLog(EX.playing?'play':'pause',{detail_source:EXL.src||(NAR.blocked?'audio_blocked':'auto')});
+  EXL.playing=EX.playing;EXL.src='';
+}
+function exLogMount(){   // the video appeared on screen: remember whether this is the first watch, and log the automatic start
+  if(EXL.on)return;
+  const p=evPlayer(),modal=!!document.getElementById('ex-modal');
+  EXL.on=true;EXL.anim=EX.anim;EXL.modal=modal?1:0;EXL.first=(!modal&&!(EX.anim==='halluc'?S.explain2Done[p]:S.explainDone[p]))?1:0;
+  EXL.playing=false;EXL.src='start';exLogTick();
+}
+function exLogUnmount(src){   // the video left the screen (Continue, modal closed, page change)
+  if(!EXL.on)return;
+  if(EX.playing){EXL.src=src||'left_screen';EX.playing=false;exLogTick();EX.playing=true;}
+  EXL.on=false;
+}
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&document.getElementById('ex-stage')){EXL.src='tab_hidden';EX.playing=false;narSync();exLogTick();}});
 window.addEventListener('pagehide',()=>{if(NAR.ok)try{speechSynthesis.cancel();}catch(e){}});
 function exTick(ts){
-  if(!document.getElementById('ex-stage')){EX.raf=null;narReset();return;}
+  if(!document.getElementById('ex-stage')){EX.raf=null;narReset();exLogUnmount('left_screen');return;}
+  exLogMount();
   const dt=Math.min(0.1,(ts-(EX.last||ts))/1000);EX.last=ts;
   if(EX.playing){
     let nt=EX.t+dt*EX.speed;
@@ -2387,6 +2450,7 @@ function exTick(ts){
     }
     EX.t=Math.min(EX_TOTAL,nt);if(EX.t>=EX_TOTAL)EX.playing=false;
   }
+  exLogTick();
   narSync();
   drawEx();
   EX.raf=requestAnimationFrame(exTick);
@@ -2394,7 +2458,9 @@ function exTick(ts){
 function exEnsureLoop(){drawEx();if(!EX.raf){EX.last=0;EX.raf=requestAnimationFrame(exTick);}}
 function exToggle(){
   const wasBlocked=NAR.blocked;NAR.blocked=false;
+  EXL.src='button';
   if(EX.t>=EX_TOTAL){narReset();EX.t=0;EX.playing=true;}else EX.playing=wasBlocked?true:!EX.playing;
+  exLogTick();
   narSync(wasBlocked);drawEx();
 }
 function exSound(){
@@ -2403,9 +2469,9 @@ function exSound(){
   if(!NAR.on){NAR.started=false;narStop();}
   narSync(true);drawEx();
 }
-function exRestart(){narReset();NAR.blocked=false;EX.t=0;EX.playing=true;drawEx();}
+function exRestart(){exLog('restart');narReset();NAR.blocked=false;EX.t=0;EX.playing=true;drawEx();}
 function exJump(i){i=_c(i,0,EX_SCENES.length-1);narReset();EX.t=EX_SCENES[i].a+0.01;drawEx();}
-function exPrev(){const i=exSceneIndex(EX.t),lt=EX.t-EX_SCENES[i].a;exJump(lt>2?i:i-1);}
+function exPrev(){const i=exSceneIndex(EX.t),lt=EX.t-EX_SCENES[i].a;exLog('skip_prev',{detail_from_part:i+1,detail_to_part:Math.max(1,(lt>2?i:i-1)+1)});exJump(lt>2?i:i-1);}
 function exNext(){
   const p=evPlayer(), from=exSceneIndex(EX.t), inModal=!!document.getElementById('ex-modal');
   const first=!inModal&&!(EX.anim==='halluc'?S.explain2Done[p]:S.explainDone[p]);
@@ -2418,15 +2484,16 @@ function exSeekEnd(v){   // fires once when the player releases the slider
   const from=EX.seekFrom; EX.seekFrom=null;
   const p=evPlayer(), inModal=!!document.getElementById('ex-modal');
   const first=!inModal&&!(EX.anim==='halluc'?S.explain2Done[p]:S.explainDone[p]);
-  if(!first||from==null)return;
+  if(from==null)return;   // (logged on rewatches too now; first_playthrough tells the two apart)
   const to=parseFloat(v);
   logEvent('explainer','seek',{player:p,item:EX.anim,detail_from_s:Math.round(from*10)/10,detail_to_s:Math.round(to*10)/10,
-    detail_from_part:exSceneIndex(from)+1,detail_to_part:exSceneIndex(to)+1,detail_direction:to>from?'forward':'back',first_playthrough:1});
+    detail_from_part:exSceneIndex(from)+1,detail_to_part:exSceneIndex(to)+1,detail_direction:to>from?'forward':'back',first_playthrough:first?1:0});
 }
 function exContinue(who){
   if(who!=='p1'&&who!=='p2')return;
   if(EX.maxSeen<EX_SCENES[EX_SCENES.length-1].a+1)return;
   logEvent('explainer','continue',{player:evPlayer(who),item:EX.anim});
+  exLogUnmount('continue');
   narReset();
   if(EX.anim==='halluc')S.explain2Done[who]=true;else S.explainDone[who]=true;
   EX.t=0;EX.playing=true;EX.maxSeen=0;
@@ -2488,6 +2555,7 @@ function explainerPageHTML(who,animId){
 function exOpenModal(who,animId){
   if(document.getElementById('ex-modal'))return;
   logEvent('explainer','rewatch',{player:evPlayer(who),item:animId||'llm'});
+  EXL.modalAt=Date.now();
   exSetAnim(animId||'llm');
   narReset();NAR.blocked=false;NAR.failed=false;NAR.fails=0;NAR.err='';EX.t=0;EX.playing=true;EX.maxSeen=EX_TOTAL;
   const d=document.createElement('div');d.id='ex-modal';
@@ -2498,7 +2566,9 @@ function exOpenModal(who,animId){
   document.body.appendChild(d);
 }
 function exCloseModal(){
-  const d=document.getElementById('ex-modal');if(d)d.remove();
+  const d=document.getElementById('ex-modal');
+  if(d){ exLogUnmount('modal_closed'); exLog('close',{detail_modal:1,first_playthrough:0,detail_open_s:EXL.modalAt?Math.round((Date.now()-EXL.modalAt)/100)/10:''}); EXL.modalAt=0; }
+  if(d)d.remove();
   EX.playing=false;narReset();
 }
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.getElementById('ex-modal'))exCloseModal();});
@@ -3241,11 +3311,32 @@ function syncAndRender() { renderAll(); syncState(); }
 const _beginGame = beginGame;
 function beginGame() { if(!S.sessionId) S.sessionId = newSessionId(); S.phase = 1; logEvent('flow','begin_game'); syncAndRender(); }
 
+/* every change to a slot of the path being built: tx, slot (1-5), old/new symbol (as T#R# positions), the path after the edit, its running score, who */
+function logSlotEdit(p1, txIdx, col, oldG, newG, action) {   // p1 = true for the Phase 1 build, false for the Phase 2 rebuild
+  try {
+    const seq = (p1 ? S.p1sel : S.p2sel)[txIdx];
+    const score = pathScore(seq);
+    const f = {
+      player: evPlayer(p1 ? p1Constructor(txIdx) : p2Controller(txIdx)),
+      tx: txIdx + 1, positions: seqCodes(txIdx, seq), score,
+      detail_slot: col + 1,
+      detail_old_symbol: oldG ? posCode(txIdx, oldG) : '',
+      detail_new_symbol: newG ? posCode(txIdx, newG) : '',
+      detail_action: action
+    };
+    if (seq.every(g => g !== null)) f.tier = probabilityTier(score, greedyScore(txIdx));
+    logEvent('path_edit', 'slot_change', f);
+  } catch (err) { /* logging must never break the game */ }
+}
+function slotAction(oldG, newG) { return !newG ? 'deselect' : (oldG ? 'change' : 'select'); }
+
 const _selectCell1 = selectCell1;
 function selectCell1(txIdx, col, row) {
   if (col === 0) return; // Token 1 is locked to the seed symbol — a given starting point
   const g = LATTICES[txIdx][col][row];
-  S.p1sel[txIdx][col] = S.p1sel[txIdx][col] === g ? null : g;
+  const oldG = S.p1sel[txIdx][col];
+  S.p1sel[txIdx][col] = oldG === g ? null : g;
+  logSlotEdit(true, txIdx, col, oldG, S.p1sel[txIdx][col], slotAction(oldG, S.p1sel[txIdx][col]));
   syncAndRender();
 }
 
@@ -3253,8 +3344,10 @@ const _selectCell2 = selectCell2;
 function selectCell2(txIdx, col, row) {
   if (col === 0) return; // token 1 is locked to the seed
   const g = LATTICES[txIdx][col][row];
-  S.p2sel[txIdx][col] = S.p2sel[txIdx][col] === g ? null : g;
+  const oldG = S.p2sel[txIdx][col];
+  S.p2sel[txIdx][col] = oldG === g ? null : g;
   S.wordInputs[txIdx][col] = null;
+  logSlotEdit(false, txIdx, col, oldG, S.p2sel[txIdx][col], slotAction(oldG, S.p2sel[txIdx][col]));
   syncAndRender();
 }
 
@@ -3274,14 +3367,24 @@ function setP2ActiveTx(i) { S.p2activeTx = i; syncAndRender(); }
 
 const _clearSel1 = clearSel1;
 function clearSel1(txIdx) {
+  const before = [...S.p1sel[txIdx]];
   S.p1sel[txIdx] = [TRANSMISSIONS[txIdx].seed, null, null, null, null];
+  for (let c = 1; c < 5; c++) if (before[c]) {   // one row per slot that was emptied (left to right; the running score reflects the slots cleared so far)
+    const part = [...before]; for (let k = 1; k <= c; k++) part[k] = null;
+    const keep = S.p1sel[txIdx]; S.p1sel[txIdx] = part; logSlotEdit(true, txIdx, c, before[c], null, 'clear_all'); S.p1sel[txIdx] = keep;
+  }
   syncAndRender();
 }
 
 const _clearSel2 = clearSel2;
 function clearSel2(txIdx) {
+  const before = [...S.p2sel[txIdx]];
   S.p2sel[txIdx] = [TRANSMISSIONS[txIdx].seed, null, null, null, null];
   S.wordInputs[txIdx] = [null, null, null, null, null];
+  for (let c = 1; c < 5; c++) if (before[c]) {
+    const part = [...before]; for (let k = 1; k <= c; k++) part[k] = null;
+    const keep = S.p2sel[txIdx]; S.p2sel[txIdx] = part; logSlotEdit(false, txIdx, c, before[c], null, 'clear_all'); S.p2sel[txIdx] = keep;
+  }
   syncAndRender();
 }
 
@@ -3477,7 +3580,7 @@ function scrollToTopOnNewScreen() {
   const top = () => ['p1-content', 'p2-content', 'shared-main'].forEach(id => { const e = document.getElementById(id); if (e) e.scrollTop = 0; });
   top(); requestAnimationFrame(top); setTimeout(top, 120);
 }
-function renderAll() { renderAllCore(); scrollToTopOnNewScreen(); }
+function renderAll() { renderAllCore(); scrollToTopOnNewScreen(); p2ScreenTick(); }
 
 function renderSharedOnly() {
   const el = document.getElementById('shared-main');

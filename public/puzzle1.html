@@ -1699,6 +1699,7 @@ function resetKeepingLog(){
   const keep=S.eventLog, old=S.sessionId;
   // First connection to the server also reports 'no saved state yet' — that is not a real reset, so don't close a session for it
   if(!keep.some(e=>e.session===old&&e.event!=='page_loaded'&&e.event!=='game_reset')){ S=freshState(); S.eventLog=keep; S.sessionId=old; return; }
+  try { screenTrack(null, 'game_reset'); } catch (e) {}
   logEvent('flow','game_reset');
   if(IS_ADMIN && old && keep.some(e=>e.session===old&&e.event!=='game_reset')){ try{ exportP1Log(old); }catch(e){} }
   S=freshState(); S.eventLog=keep; S.sessionId=newSessionId();
@@ -1769,6 +1770,39 @@ function logEvent(task, event, f) {
     logAfterPush(e);
   } catch (err) { /* logging must never break the game */ }
 }
+
+/* ── time on each consolidation (Phase 2) screen: one 'screen/enter' row and one 'screen/exit' row (with seconds) per visit ── */
+const SCR = { id: null, t: 0, hid: 0, hidSince: 0, session: null };
+document.addEventListener('visibilitychange', () => {   // tab hidden time is tracked separately (active_s = duration_s minus time the tab was hidden)
+  if (document.hidden) SCR.hidSince = Date.now();
+  else if (SCR.hidSince) { SCR.hid += Date.now() - SCR.hidSince; SCR.hidSince = 0; }
+});
+function screenTrack(newId, reason) {
+  try {
+    if (newId === SCR.id) return;
+    const now = Date.now();
+    if (SCR.id) {
+      const hid = SCR.hid + (SCR.hidSince ? now - SCR.hidSince : 0);
+      const f = { item: SCR.id, phase: 2, detail_duration_s: Math.round((now - SCR.t) / 100) / 10, detail_active_s: Math.round(Math.max(0, now - SCR.t - hid) / 100) / 10, detail_reason: reason || 'next_screen' };
+      if (SCR.session) f.session = SCR.session;
+      logEvent('screen', 'exit', f);
+    }
+    SCR.id = newId || null;
+    if (SCR.id) { SCR.t = now; SCR.hid = 0; SCR.hidSince = document.hidden ? now : 0; SCR.session = S.sessionId; logEvent('screen', 'enter', { item: SCR.id, phase: 2 }); }
+  } catch (err) { /* logging must never break the game */ }
+}
+function p1ScreenId() {
+  if (!S.phase2Active) return null;
+  if (S.phase2Complete) return 'complete';
+  if (S.phase2Step === 'prediction') {
+    const st = peaState[myPlayerKey()];
+    return 'prediction_explainer_' + (st.stage + 1) + (st.completed ? '+questions' : '');   // the questions appear together with explainer stage 4 and stay visible afterwards
+  }
+  if (S.phase2Step === 'final') return (S.finalAnswer.q1 === FINAL_QUESTIONS.q1.correct && FQ.advanced) ? 'final_q2' : 'final_q1';
+  return S.phase2Step || 'alert';   // alert | diagnosis
+}
+function p1ScreenTick() { try { screenTrack(p1ScreenId()); } catch (err) {} }
+setInterval(p1ScreenTick, 1000);
 
 // Stable per-player random option order (kept in sessionStorage so a refresh doesn't reshuffle mid-question).
 const _optOrder = {};
@@ -2269,6 +2303,7 @@ function peaNext() {
   logEvent('explainer', 'stage_view', { choice: String(state.stage + 1), detail_dir: 'next' });
   if (state.stage === PEA_STAGE_COUNT - 1) state.completed = true;
   peaSync();
+  p1ScreenTick();
 }
 
 function peaPrev() {
@@ -2276,6 +2311,7 @@ function peaPrev() {
   if (state.stage > 0) state.stage--;
   logEvent('explainer', 'stage_view', { choice: String(state.stage + 1), detail_dir: 'prev' });
   peaSync();
+  p1ScreenTick();
 }
 
 // ══════════════════════════════════════════════════════
@@ -2377,15 +2413,20 @@ function showToast(cls, title, msg) {
 // ══════════════════════════════════════════════════════
 //  INFO TIP
 // ══════════════════════════════════════════════════════
+const _infoOpenedAt = {};
+function logInfoToggle(item, isOpen) {   // one 'info_opened' row per open, one 'info_closed' row (with seconds open) per close
+  if (isOpen) { _infoOpenedAt[item] = Date.now(); logEvent('help', 'info_opened', { item: item }); }
+  else { const t = _infoOpenedAt[item]; delete _infoOpenedAt[item]; logEvent('help', 'info_closed', { item: item, detail_open_s: t ? Math.round((Date.now() - t) / 100) / 10 : '' }); }
+}
 function toggleBiasTip() {
   const tip = document.getElementById('biasTip');
-  if (tip) { tip.classList.toggle('open'); if (tip.classList.contains('open')) logEvent('help', 'info_opened', { item: 'bias_score' }); }
+  if (tip) { tip.classList.toggle('open'); logInfoToggle('bias_score', tip.classList.contains('open')); }
 }
 
 const INFO_BOX_NAMES = { classifierModal: 'binary_classifier', classifierModalP2: 'binary_classifier', scanOutcomeModal: 'how_scanning_works', scanLogModal: 'scan_log' };
 function toggleModal(id) {
   const el = document.getElementById(id);
-  if (el) { el.classList.toggle('open'); if (el.classList.contains('open')) logEvent('help', 'info_opened', { item: INFO_BOX_NAMES[id] || id }); }
+  if (el) { el.classList.toggle('open'); logInfoToggle(INFO_BOX_NAMES[id] || id, el.classList.contains('open')); }
 }
 
 function closeModalOutside(event, id) {
@@ -2740,6 +2781,7 @@ function renderAll() {
   renderP2();
   renderPhase2();
   renderFriendMsg();
+  p1ScreenTick();
 }
 
 function renderP1() {
@@ -3522,21 +3564,35 @@ function renderFriendMsg() {
   // Timestamp
   const stamp = document.getElementById('friendMsgStamp');
   if (!stamp.textContent) stamp.textContent = 'RECEIVED: ROUND ' + S.trainingRound;
-  // Auto-open on first trigger so players don't miss it
+  // Auto-open on first trigger so players don't miss it (only until they open or close it once)
   if (!S.friendMsgSeen) {
-    document.getElementById('friendMsgPanel').classList.add('open');
+    const panel = document.getElementById('friendMsgPanel');
+    if (!panel.classList.contains('open')) {
+      panel.classList.add('open');
+      friendOpenedAt = Date.now();
+      if (!friendShownLogged) { friendShownLogged = true; logEvent('help', 'hint_shown'); }   // the automatic pop-up (first time only)
+    }
   }
 }
 
+let friendOpenedAt = 0, friendShownLogged = false;
 function openFriendMsg() {
   logEvent('help', 'hint_opened');
-  document.getElementById('friendMsgPanel').classList.add('open');
+  const panel = document.getElementById('friendMsgPanel');
+  if (!panel.classList.contains('open')) friendOpenedAt = Date.now();
+  panel.classList.add('open');
   S.friendMsgSeen = true;
   document.getElementById('friendNotif').className = 'friend-notif seen';
 }
 
 function closeFriendMsg() {
-  document.getElementById('friendMsgPanel').classList.remove('open');
+  const panel = document.getElementById('friendMsgPanel');
+  const wasOpen = panel.classList.contains('open');
+  panel.classList.remove('open');
+  // Closing the message counts as having seen it: it must never pop up on its own again
+  S.friendMsgSeen = true;
+  document.getElementById('friendNotif').className = 'friend-notif seen';
+  if (wasOpen) logEvent('help', 'hint_closed', { detail_open_s: friendOpenedAt ? Math.round((Date.now() - friendOpenedAt) / 100) / 10 : '' });
 }
 
 // ══════════════════════════════════════════════════════
